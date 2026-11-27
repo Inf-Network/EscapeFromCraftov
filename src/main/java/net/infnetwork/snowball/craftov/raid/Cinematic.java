@@ -4,6 +4,8 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.item.Keys;
 import net.infnetwork.snowball.craftov.util.Nms;
 import net.infnetwork.snowball.craftov.util.Text;
+import io.papermc.paper.datacomponent.item.ResolvableProfile;
+import net.kyori.adventure.key.Key;
 import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -14,6 +16,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.profile.PlayerTextures;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 import org.jspecify.annotations.Nullable;
@@ -63,6 +66,11 @@ public final class Cinematic {
      * bullets, grenades and the HUD pass over it.
      */
     private static final String ROLE = "entry_camera";
+    /**
+     * A fully transparent skin (tools/art/build.py): a spectator who looks at their camera from
+     * outside (F5) would see it as a ghost otherwise, as spectators see anything invisible.
+     */
+    private static final Key SKIN = Key.key("craftov", "entity/camera");
     /**
      * The share of the flight by which the camera faces the squad's bearing, level: the rest glides
      * straight in. A mannequin's head yaw goes out in steps of 1.4 degrees, which a slow turn would
@@ -309,6 +317,8 @@ public final class Cinematic {
             // camera for one, it would show as a ghost.
             m.setVisibleByDefault(false);
             m.setInvisible(true);
+            m.setProfile(ResolvableProfile.resolvableProfile()
+                    .skinPatch(skin -> skin.body(SKIN).model(PlayerTextures.SkinModel.CLASSIC)).build());
             m.setPersistent(false);
             m.setInvulnerable(true);
             m.setSilent(true);

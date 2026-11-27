@@ -1341,6 +1341,10 @@ def build_trigger_capture():
     # Corpses are mannequins (player model), which need the modern layout.
     save(soldiers.modern(soldiers.patrol()), os.path.join(CV, 'textures', 'entity', 'soldier', 'patrol.png'))
     save(soldiers.modern(soldiers.elite()), os.path.join(CV, 'textures', 'entity', 'soldier', 'elite.png'))
+    # The raid entry camera (Cinematic) is a mannequin, which spectators see as a ghost though it is
+    # invisible: the player flying in on it would, from outside (F5). With a see-through skin there is
+    # nothing to see.
+    save(Image.new('RGBA', (64, 64), (0, 0, 0, 0)), os.path.join(CV, 'textures', 'entity', 'camera.png'))
     write_text(os.path.join(MC, 'shaders', 'core', 'rendertype_lines.fsh'), LINES_FSH)
 
 

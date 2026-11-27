@@ -71,12 +71,17 @@ function make (name) {
   const bot = mineflayer.createBot({ host: '127.0.0.1', port: MC_PORT, username: name, version: '1.21.11', auth: 'offline' })
   bot.chatLog = []
   bot.titles = []
+  bot.cameras = [] // {at, type}: every camera packet, with what the bot knew of that entity
   bot.worldName = ''
   // mineflayer's game.dimension is only the dimension type; the world's name comes with login and respawn.
   const track = p => { if (p.worldState && p.worldState.name) bot.worldName = p.worldState.name.replace(/^minecraft:/, '') }
   bot._client.on('login', track)
   bot._client.on('respawn', track)
   bot.on('title', (t, type) => bot.titles.push({ at: Date.now(), type, text: strip(JSON.stringify(t)) }))
+  bot._client.on('camera', p => {
+    const e = bot.entities[p.cameraId]
+    bot.cameras.push({ at: Date.now(), type: p.cameraId === (bot.entity && bot.entity.id) ? 'self' : e ? e.name : 'unknown' })
+  })
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) bot.chatLog.push(m) })
   bot.on('kicked', r => console.log(name, 'KICKED', JSON.stringify(r)))
@@ -258,6 +263,9 @@ const scenarios = {
     const titled = bot.titles.some(t => t.text.includes('行动开始'))
     const problems = []
     if (!onCamera) problems.push(`back in ${bot.worldName} ${bot.game.gameMode}, not on the camera`)
+    // Back on a camera of its own, a mannequin it had already been sent (#166).
+    const cams = bot.cameras.filter(c => c.type !== 'self').map(c => c.type)
+    if (!cams.includes('mannequin') || cams.includes('unknown')) problems.push(`camera packets after rejoining: ${cams.join(',') || 'none'}`)
     if (!landed) problems.push('never landed')
     // The camera runs about 6.8 s; landing earlier means a head start on the squad.
     if (landed && landedAt < 6.0) problems.push(`landed ${landedAt.toFixed(1)}s after the camera started`)

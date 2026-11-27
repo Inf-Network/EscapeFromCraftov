@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
+import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
@@ -34,15 +35,17 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Private shooting ranges. Entering saves the player's lobby inventory and moves them to a copy of
- * the hangar's firing line in a separate world, one copy per player, far from all others and with
- * other players hidden. Leaving wipes everything they hold and restores the saved inventory, so
+ * Private shooting ranges, the one place outside a raid to shoot. Entering saves the player's lobby
+ * inventory and moves them to a firing lane built on a copy of the hangar's north-east corner in a
+ * separate world, one plot per player, far from all others and with other players hidden, wearing a
+ * loaner rig and backpack. Leaving wipes everything they hold and restores the saved inventory, so
  * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that
  * overwrites the profile's loadout during the session can cost the player their gear.
@@ -52,7 +55,7 @@ public final class RangeService implements Listener {
     public static final String WORLD = "craftov_range";
     public static final String EXIT = "range_exit";
     private static final int SPACING = 256;
-    // The hangar's firing line, copied block for block into every plot.
+    // The hangar's north-east corner, copied block for block into every plot under its firing lane.
     private static final int X0 = 6;
     private static final int X1 = LobbyBuilder.R + 1;
     private static final int Z0 = -LobbyBuilder.R - 1;
@@ -131,13 +134,29 @@ public final class RangeService implements Listener {
         player.setItemOnCursor(null);
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, exitItem());
         player.getInventory().setItem(CarryService.MELEE_SLOT, plugin.items().create("knife_starter", 1));
-        // Wide open hands: the range ignores rig and backpack limits.
-        plugin.carry().refreshLocks(player);
+        wearLoanerGear(player);
         player.teleport(new Location(world, offset(plot) + 14.5, LobbyBuilder.Y + 1, -5.5, 180f, 0f));
         player.setGameMode(GameMode.ADVENTURE);
         hideOthers(player);
         plugin.tutorial().done(player, TutorialService.Step.RANGE);
-        Text.send(player, "<accent>已进入个人靶场。<muted>右键武器架领取武器，子弹无限；离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
+        Text.send(player, "<accent>已进入个人靶场。<muted>右键武器架领取武器，子弹无限；身上是靶场专用的胸挂和背包，"
+                + "武器架上的配件都装得下。离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
+    }
+
+    /**
+     * Puts on a loaner rig and backpack, the roomiest of each, so everything on the rack fits at
+     * once: without them a player had two gun keys and no cell for a single attachment. They are
+     * range items like the loaners, so they leave with the session and have no stored form, and
+     * they cannot be taken off here (CarryListener): one taken off would pack the loaners inside,
+     * which cannot be packed, and lose them.
+     */
+    private void wearLoanerGear(Player player) {
+        for (Category category : new Category[]{Category.RIG, Category.BACKPACK}) {
+            plugin.registry().byCategory(category).stream()
+                    .max(Comparator.comparingInt(ItemDef::slots).thenComparingLong(ItemDef::value))
+                    .ifPresent(def -> plugin.carry().equip(player, plugin.items().markRange(plugin.items().create(def, 1))));
+        }
+        plugin.carry().refreshLocks(player);
     }
 
     /** Ends the session: everything held is discarded and the saved lobby inventory comes back. */
@@ -223,6 +242,8 @@ public final class RangeService implements Listener {
                 }
             }
         }
+        // The lobby itself has no lane any more (#164): the range is where shooting is done.
+        LobbyBuilder.lane(world, dx);
         List<Entity> spawned = new ArrayList<>();
         Location rack = new Location(world, dx + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
         spawned.add(world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
@@ -249,8 +270,8 @@ public final class RangeService implements Listener {
                         z.setAdult();
                         z.setSilent(true);
                         z.setPersistent(false);
-                        // Never despawned for being far from players, as the lobby's and the training
-                        // course's targets; release() removes them with the range.
+                        // Never despawned for being far from players, as the training course's
+                        // targets; release() removes them with the range.
                         z.setRemoveWhenFarAway(false);
                         z.setShouldBurnInDay(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);

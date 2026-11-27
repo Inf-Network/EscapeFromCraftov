@@ -39,10 +39,19 @@
 //            cell, and every 50 clicks, with both screens closed, the items in the box, on both
 //            bots (packed contents counted), in both secure containers and on the ground nearby
 //            add up to what there was before.
+//   ghost    clicks sent the way the vanilla client sends them (the window's current state id, the
+//            slots the client already changed itself), and after each one the window as the client
+//            shows it is compared with the server's own (#160: a taken item stayed in its cell until
+//            clicked again). The test armory (a left click), the stash (an item put in from below and
+//            taken back), then the proving-ground armory box: a left click, a double click, a click
+//            and a drag, the bot's own items shift-clicked into the box, one shift-clicked on into the
+//            secure container, one put on an empty quick key with its number key, the worn helmet
+//            shift-clicked into the box and worn again with a right click, and take all. Each case
+//            also checks that the click did what it should (the cell emptied, the item arrived).
 //
-//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info cursor stash trader preset secure loot]
+//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info cursor stash trader preset secure loot ghost]
 //
-// The server needs test.enabled (secure and loot queue for the proving ground). Bots use random
+// The server needs test.enabled (secure, loot and ghost queue for the proving ground). Bots use random
 // names (new accounts with the starter kit); trader, preset and secure prepare the profile by
 // editing its JSON while the bot is offline (CRAFTOV_DATA = the server's plugins/Craftov folder,
 // default ../../server/run/plugins/Craftov). Prints PASS/FAIL lines and exits with the number of
@@ -66,7 +75,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const log = (who, ...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${who}`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const cmd = c => rcon(c, RCON).then(r => r.replace(/§./g, ''))
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'cursor', 'stash', 'trader', 'preset', 'secure', 'loot']
+const scenarios = wanted.length ? wanted : ['zones', 'rules', 'matrix', 'info', 'cursor', 'stash', 'trader', 'preset', 'secure', 'loot', 'ghost']
 const DATA = env.DATA
 const failures = []
 function check (name, ok, detail) {
@@ -729,8 +738,186 @@ async function loot () {
   a.quit(); b.quit()
 }
 
+// ------------------------------------------------------------------ ghosts (#160)
+
+/** Keeps the state id of every window as the client does: the last one the server sent for it. */
+function trackStates (bot) {
+  bot.stateIds = {}
+  const note = p => { bot.stateIds[p.windowId] = p.stateId }
+  bot._client.on('window_items', note)
+  bot._client.on('set_slot', note)
+}
+
+/**
+ * A click on the open window sent the way the vanilla client sends it: the slots in `emptied` are
+ * emptied on the client first (its own prediction of the click) and reported so, with the window's
+ * current state id. The server then corrects only the slots it holds differently from what the
+ * client reported, so one it fails to correct stays on screen as it is. (rawClick's stale state id
+ * makes the server send the whole window back, which would hide exactly that.) Only empty slots are
+ * reported: an item would need its component hashes.
+ */
+function clientClick (bot, slot, button, mode, emptied = []) {
+  const w = bot.currentWindow
+  for (const s of emptied) w.updateSlot(s, null)
+  bot._client.write('window_click', {
+    windowId: w.id,
+    stateId: bot.stateIds[w.id] ?? 0,
+    slot,
+    mouseButton: button,
+    mode,
+    changedSlots: emptied.map(location => ({ location, item: undefined })),
+    cursorItem: undefined
+  })
+}
+
+const shownAs = s => s ? `${idOf(s) || uiTag(s) || s.name}:${s.count}` : '-'
+
+/**
+ * Lets the server answer a click, reads the top of the window as the client now shows it, then
+ * pulls the server's own state (a full resync) and names every slot where the two differ. Returns
+ * what the server holds, slot by slot. The window is read anew each time: a new title reopens it.
+ * The search screen's load and value cells (52, 53) are left out: they follow the carried weight,
+ * which the server itself only works out again every second, so they may change in between.
+ */
+async function sameAsServer (bot, label) {
+  await sleep(500)
+  const shown = bot.currentWindow.slots.slice(0, 54).map(shownAs)
+  await settle(bot)
+  const real = bot.currentWindow.slots.slice(0, 54).map(shownAs)
+  const live = bot.currentWindow.slots.length === 90 && json(bot.currentWindow.slots[52]).includes('info_weight') ? [52, 53] : []
+  const ghosts = []
+  shown.forEach((s, raw) => { if (s !== real[raw] && !live.includes(raw)) ghosts.push(`${raw} shows ${s}, holds ${real[raw]}`) })
+  check(`ghost: ${label}: the screen shows what the server holds`, ghosts.length === 0, ghosts.join('; '))
+  return real
+}
+
+async function ghost () {
+  const bot = await make('Cg')
+  trackStates(bot)
+  await cmd(`cv give ${bot.username} circuit 1`)
+  await cmd(`cv give ${bot.username} key_dorm 1`)
+  await settle(bot, 600)
+  const own = id => bot.currentWindow.slots.findIndex((s, i) => i >= bot.currentWindow.inventoryStart && idOf(s) === id)
+
+  // The test armory: a left click hands out a copy and the item stays on show.
+  if (!await openWith(bot, () => bot.chat('/cv items'))) return check('ghost: the test armory opens', false)
+  await settle(bot)
+  clientClick(bot, 4, 0, 0, [4]) // the medical tab
+  await sameAsServer(bot, 'the test armory, a tab')
+  const sample = shownAs(bot.currentWindow.slots[9])
+  clientClick(bot, 9, 0, 0, [9])
+  let real = await sameAsServer(bot, 'the test armory, a left click on an item')
+  check('ghost: the test armory keeps showing the item handed out', real[9] === sample, { sample, now: real[9] })
+  bot.closeWindow(bot.currentWindow)
+  await sleep(600)
+
+  // The stash: an item put in from below (a new title reopens the screen), then taken back out.
+  if (!await openWith(bot, () => bot.chat('/cv stash'))) return check('ghost: the stash opens', false)
+  await settle(bot)
+  const ammo = own('ammo_9_fmj')
+  if (ammo < 0) {
+    check('ghost: the starter kit has 9 mm rounds to put into the stash', false)
+  } else {
+    clientClick(bot, ammo, 0, 0, [ammo])
+    real = await sameAsServer(bot, 'the stash, an item put in')
+    const cell = real.findIndex((s, raw) => raw >= 9 && raw < 45 && s.startsWith('ammo_9_fmj:'))
+    check('ghost: the rounds went into the stash', cell >= 0 && own('ammo_9_fmj') < 0, cell)
+    if (cell >= 0) {
+      clientClick(bot, cell, 0, 0, [cell])
+      await sameAsServer(bot, 'the stash, an item taken out')
+      check('ghost: the rounds came back out of the stash', own('ammo_9_fmj') >= 0)
+    }
+  }
+  bot.closeWindow(bot.currentWindow)
+  await sleep(600)
+
+  // The search screen: the proving-ground armory box (guns only), the bot's own items put in.
+  bot.chat('/cv queue proving NORMAL SOLO')
+  const inRaid = () => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
+  if (!await waitFor(inRaid, 150000)) return check('ghost: in a raid', false, bot.worldName)
+  await sleep(6000)
+  const w = await openBox(bot)
+  if (!w) return check('ghost: the armory box opens', false)
+  // An item revealed between a click's "shown" snapshot and the resync would read as a ghost.
+  if (!await waitFor(() => BOX_CELLS.every(raw => !json(w.slots[raw]).includes('search_')), 90000)) {
+    return check('ghost: the box finished searching', false)
+  }
+  await settle(bot)
+  const boxCell = pred => BOX_CELLS.find(raw => pred(bot.currentWindow.slots[raw]))
+  const inBox = (real, id) => BOX_CELLS.some(raw => real[raw].startsWith(id + ':'))
+  const took = (label, raw, real, before) => check(`ghost: ${label}: the cell is empty`, real[raw] === '-', { raw, before, now: real[raw] })
+
+  let raw = boxCell(s => idOf(s))
+  let before = shownAs(bot.currentWindow.slots[raw])
+  clientClick(bot, raw, 0, 0, [raw])
+  took('a left click', raw, await sameAsServer(bot, 'a left click takes an item'), before)
+
+  raw = boxCell(s => idOf(s))
+  before = shownAs(bot.currentWindow.slots[raw])
+  clientClick(bot, raw, 0, 0, [raw])
+  await sleep(150) // the second half of a double click comes once the first has been answered
+  clientClick(bot, raw, 0, 6, [])
+  took('a double click', raw, await sameAsServer(bot, 'a double click takes an item'), before)
+
+
+  for (const id of ['circuit', 'key_dorm']) {
+    const at = own(id)
+    if (at < 0) { check(`ghost: the bot carries its ${id}`, false); continue }
+    clientClick(bot, at, 0, 1, [at])
+    real = await sameAsServer(bot, `the ${id} shift-clicked into the box`)
+    check(`ghost: the ${id} is in the box`, inBox(real, id) && own(id) < 0)
+  }
+
+  raw = boxCell(s => idOf(s) === 'circuit')
+  if (raw !== undefined) {
+    clientClick(bot, raw, 0, 1, [raw])
+    real = await sameAsServer(bot, 'a shift-click puts an item into the secure container')
+    took('a shift-click into the secure container', raw, real, 'circuit')
+    check('ghost: the circuit is in the secure container', SECURE.some(c => real[c].startsWith('circuit:')), SECURE.map(c => real[c]))
+  }
+
+  raw = boxCell(s => idOf(s) === 'key_dorm')
+  const key = [3, 4, 5, 6, 7].find(n => !bot.currentWindow.slots[bot.currentWindow.inventoryStart + 27 + n])
+  if (raw !== undefined && key !== undefined) {
+    clientClick(bot, raw, key, 2, [raw])
+    real = await sameAsServer(bot, `number key ${key + 1} puts an item on its empty quick key`)
+    took('a number key', raw, real, 'key_dorm')
+    check('ghost: the key is on that quick key', idOf(bot.currentWindow.slots[bot.currentWindow.inventoryStart + 27 + key]) === 'key_dorm')
+  } else {
+    check('ghost: a free quick key for the number-key case', false, { raw, key })
+  }
+
+  const helmet = idOf(bot.currentWindow.slots[GEAR[0]])
+  if (!helmet) {
+    check('ghost: the starter kit wears a helmet', false)
+  } else {
+    clientClick(bot, GEAR[0], 0, 1, [GEAR[0]])
+    real = await sameAsServer(bot, 'the worn helmet shift-clicked into the box')
+    took('the worn helmet shift-clicked', GEAR[0], real, helmet)
+    check('ghost: the helmet is in the box', inBox(real, helmet))
+    raw = boxCell(s => idOf(s) === helmet)
+    if (raw !== undefined) {
+      clientClick(bot, raw, 1, 0, [raw])
+      real = await sameAsServer(bot, 'a right click wears a helmet')
+      took('a right click on a helmet', raw, real, helmet)
+      check('ghost: the helmet is worn again', real[GEAR[0]].startsWith(helmet + ':'), real[GEAR[0]])
+    }
+  }
+
+  const inside = () => BOX_CELLS.filter(c => idOf(bot.currentWindow.slots[c])).length
+  const left = inside()
+  clientClick(bot, 42, 0, 0, [42])
+  await sameAsServer(bot, 'take all')
+  check('ghost: take all took something', inside() < left, { before: left, after: inside() })
+
+  bot.closeWindow(bot.currentWindow || w)
+  await cmd(`execute as ${bot.username} at @s run tp @s 106.5 65 8.5`)
+  await waitFor(() => !inRaid(), 40000)
+  bot.quit()
+}
+
 ;(async () => {
-  const all = { zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot }
+  const all = { zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
   for (const name of scenarios) {
     try {
       await all[name]()

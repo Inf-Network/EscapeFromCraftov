@@ -11,8 +11,8 @@ import java.util.List;
 
 /**
  * Picks the operator. On the private range it picks one to try there only (OperatorService): the
- * title says so, each card says what the player is back to on leaving, and a button leads back to
- * the weapon rack.
+ * title and the cards say so, and a button that leads back to the weapon rack names the operator the
+ * player has again on leaving.
  */
 final class OperatorMenu extends Menu {
 

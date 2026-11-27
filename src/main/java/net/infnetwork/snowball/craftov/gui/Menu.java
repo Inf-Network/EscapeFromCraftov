@@ -165,6 +165,9 @@ public abstract class Menu implements InventoryHolder {
         // A button still showing an earlier result gets its own lore back first: the new line takes
         // the old one's place instead of going under it, so clicking a refused button again and
         // again shows the reason once, not once per click down to the bottom of the screen (#161).
+        // An earlier result after the title is replaced the same way: below if this one goes to a
+        // button, since no timer would take the old one off the title then.
+        boolean titled = flashLine != null && flashSlot < 0;
         unflash();
         flashLine = line;
         flashLore = net.infnetwork.snowball.craftov.util.Text.mm(net.infnetwork.snowball.craftov.util.Text.wrap(text, FLASH_WIDTH));
@@ -175,6 +178,9 @@ public abstract class Menu implements InventoryHolder {
             flashBase = flashFor;
             flashShown = withFlash(flashFor);
             inventory.setItem(flashSlot, flashShown);
+            if (titled) {
+                pushTitle();
+            }
         } else {
             pushTitle();
         }

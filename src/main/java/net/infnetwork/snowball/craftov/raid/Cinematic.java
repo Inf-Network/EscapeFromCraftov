@@ -119,17 +119,28 @@ public final class Cinematic {
         Vector p1 = center.toVector().add(new Vector(0, 10, 0));
         List<Flight> flights = new ArrayList<>();
         for (Player player : players) {
-            RaidPlayer rp = raid.player(player.getUniqueId());
-            // Where RaidManager.deploySquad has them land (and reconnect, should they drop out).
-            Location landing = rp != null && rp.lastLocation != null && rp.lastLocation.getWorld() == raid.world
-                    ? rp.lastLocation.clone() : spawn.clone();
-            Flight flight = new Flight(player.getUniqueId(), landing, p0, p1, cameraFor(raid, player, landing, p0, p1));
-            flights.add(flight);
-            // A black curtain over the jump into the raid world, so its loading never shows.
-            net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, CURTAIN_IN, CURTAIN_STAY, CURTAIN_OUT);
-            player.setGameMode(GameMode.SPECTATOR);
-            // Already looking where the camera does: until the client has the camera, this is the view.
-            player.teleport(flight.at(raid.world, 0));
+            @Nullable Flight flight = null;
+            try {
+                RaidPlayer rp = raid.player(player.getUniqueId());
+                // Where RaidManager.deploySquad has them land (and reconnect, should they drop out).
+                Location landing = rp != null && rp.lastLocation != null && rp.lastLocation.getWorld() == raid.world
+                        ? rp.lastLocation.clone() : spawn.clone();
+                flight = new Flight(player.getUniqueId(), landing, p0, p1, cameraFor(raid, player, landing, p0, p1));
+                // A black curtain over the jump into the raid world, so its loading never shows.
+                net.infnetwork.snowball.craftov.gui.UiFont.blackout(player, CURTAIN_IN, CURTAIN_STAY, CURTAIN_OUT);
+                player.setGameMode(GameMode.SPECTATOR);
+                // Already looking where the camera does: until the client has the camera, this is the view.
+                player.teleport(flight.at(raid.world, 0));
+                flights.add(flight);
+            } catch (RuntimeException ex) {
+                // One player's camera failing must not stop the rest of the squad (or the squads
+                // deployed after it) from flying in: that player is put down at once instead.
+                plugin.getLogger().log(Level.WARNING, "Entry camera could not be set up for " + player.getName(), ex);
+                if (flight != null) {
+                    flight.camera.remove();
+                }
+                onDone.accept(player.getUniqueId());
+            }
         }
         String tierLine = raid.tier.tag() + " <muted>· " + (players.size() <= 1 ? "单人行动" : players.size() + " 人小队");
         new BukkitRunnable() {

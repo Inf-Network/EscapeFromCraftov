@@ -36,6 +36,8 @@ import java.util.logging.Logger;
  *   are using it (the living-entity flags), is rewritten so their client draws the pose a stance
  *   calls for, a gun carried low or shouldered, say (see {@code StanceService}). The same handler
  *   keeps sounds the rewriter refuses (other players' vanilla footsteps) from the listener.</li>
+ *   <li>Entry camera: the raid's fly-in camera has its moves sent with exact rotation, and a client
+ *   that missed being put on it is put on it again (see {@link #precisePosition}, {@link #sendCamera}).</li>
  * </ul>
  */
 public final class Nms {
@@ -1328,6 +1330,66 @@ public final class Nms {
             broadcastChanges.invoke(containerMenu.get(handle));
         } catch (ReflectiveOperationException | RuntimeException ex) {
             syncUnavailable = true;
+        }
+    }
+
+    // ------------------------------------------------------------------ entry camera
+
+    private static boolean cameraTried;
+    private static @Nullable Method entityHandle;
+    private static @Nullable Method requirePrecise;
+    private static @Nullable Constructor<?> cameraPacketCtor;
+
+    private static void cameraHooks() {
+        if (cameraTried) {
+            return;
+        }
+        cameraTried = true;
+        try {
+            entityHandle = Class.forName("org.bukkit.craftbukkit.entity.CraftEntity").getMethod("getHandle");
+            Class<?> entity = Class.forName("net.minecraft.world.entity.Entity");
+            requirePrecise = entity.getMethod("setRequiresPrecisePosition", boolean.class);
+            cameraPacketCtor = Class.forName("net.minecraft.network.protocol.game.ClientboundSetCameraPacket").getConstructor(entity);
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            requirePrecise = null;
+            cameraPacketCtor = null;
+        }
+    }
+
+    /**
+     * Has the server send every move of this entity as its exact position and rotation (a position
+     * sync each tick) instead of the usual deltas, whose rotation is rounded to 1.4 degrees: a slow
+     * turn of a camera riding on it would go in visible clicks. False if that cannot be had; the
+     * moves are then sent as usual.
+     */
+    public static boolean precisePosition(org.bukkit.entity.Entity entity) {
+        cameraHooks();
+        if (requirePrecise == null) {
+            return false;
+        }
+        try {
+            requirePrecise.invoke(entityHandle.invoke(entity), true);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            return false;
+        }
+    }
+
+    /**
+     * Points the player's client at a camera the server already has them spectating. The server
+     * only says so when the camera changes, and a client that did not know the entity then (or has
+     * since lost it) ignored that and stayed in its own body. False if the packet could not be sent.
+     */
+    public static boolean sendCamera(Player player, org.bukkit.entity.Entity camera) {
+        cameraHooks();
+        if (!ready || cameraPacketCtor == null) {
+            return false;
+        }
+        try {
+            sendPacket.invoke(connection(player), cameraPacketCtor.newInstance(entityHandle.invoke(camera)));
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            return false;
         }
     }
 }

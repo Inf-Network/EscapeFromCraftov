@@ -3,7 +3,9 @@
 //   menu       /cv opens the terminal: the open_screen title is in the craftov:ui font and carries
 //              the "main" screen's background glyph (U+E100..); clicking a button plays
 //              craftov:ui.click; the free-kit button on a rich account flashes its refusal into the
-//              button's tooltip and plays craftov:ui.error.
+//              button's tooltip and plays craftov:ui.error. In the trader, a plain click on a
+//              bandage in the inventory puts its price after the title, and a button clicked right
+//              after takes the result over: the title must lose the price (#161).
 //   tooltips   one item of each rarity carries tooltip_style craftov:rarity_<rarity>; a menu button
 //              carries craftov:ui.
 //   channels   three solo bots in one proving-ground raid: B dies. B's squad gets "☠ B" on its HUD
@@ -118,6 +120,22 @@ async function menu () {
     check('a refused click plays craftov:ui.error', a.sounds.slice(mark).some(s => s.text.includes('ui.error')))
     a.closeWindow(w2)
   }
+  // A click in the player's own inventory puts its result after the title; a button clicked
+  // within its two seconds takes the result over, and the title must lose the old one (#161).
+  await sleep(500)
+  const trader = await nextWindow(a, () => a.chat('/cv trader'))
+  const own = trader ? trader.slots.findIndex((s, i) => i >= trader.inventoryStart && s && loreOf(s).includes('"craftov:bandage"')) : -1
+  if (own >= 0) {
+    await a.clickWindow(own, 0, 0) // a plain click: the trader's price, after the title
+    await sleep(500)
+    const priced = a.screens[a.screens.length - 1] || ''
+    await a.clickWindow(0, 0, 0) // the first thing on sale: its result goes to the button
+    await sleep(2800)
+    const later = a.screens[a.screens.length - 1] || ''
+    check('a result after the title shows up there', priced.includes('收购价'), priced.slice(0, 200))
+    check('a button result right after it clears it from the title', !later.includes('收购价'), later.slice(0, 200))
+  } else check('the trader opens with a bandage in the inventory', false, trader ? 'no bandage' : 'no window')
+  if (a.currentWindow) a.closeWindow(a.currentWindow)
   a.quit()
 }
 

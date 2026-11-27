@@ -95,26 +95,48 @@ final class LobbyBuilder {
     }
 
     /**
+     * Whether the hangar still has the firing lane an older version built in its corner: hay at
+     * the far end or the striped floor. Read from the blocks rather than kept in a file, so a crash
+     * before the world was saved, a restored backup or a deleted marker cannot leave it in place.
+     */
+    static boolean hasLane(World world) {
+        return world.getBlockAt(10, Y + 1, -R + 1).getType() == Material.HAY_BLOCK
+                || world.getBlockAt(12, Y, -15).getType() == Material.YELLOW_CONCRETE;
+    }
+
+    /**
      * Turns the lane a hangar built before #164 still has back into plain hangar: the floor grid,
-     * no rail, and the wall columns the hay bales had replaced.
+     * no rail, and the wall columns the hay bales had replaced. Only blocks that are still the
+     * lane's own (its striped floor, the slab rail, the hay) are replaced, so anything built there
+     * by hand since stays, and running it again changes nothing.
      */
     static void clearLane(World world) {
         Builder b = new Builder(world, 7L);
         for (int x = LANE_X0; x <= R - 1; x++) {
             for (int z = -R + 1; z <= LANE_Z1; z++) {
-                b.set(x, Y, z, floor(x, z));
+                Material was = b.type(x, Y, z);
+                if (was == Material.YELLOW_CONCRETE || was == Material.SMOOTH_STONE) {
+                    b.set(x, Y, z, floor(x, z));
+                }
             }
         }
         for (int z = -R + 1; z <= LANE_Z1; z++) {
-            b.set(LANE_X0 - 1, Y + 1, z, Material.AIR);
+            replaceIf(b, LANE_X0 - 1, Y + 1, z, Material.POLISHED_BLACKSTONE_SLAB, Material.AIR);
         }
         for (int x = LANE_X0; x <= R - 1; x++) {
-            b.set(x, Y + 1, LANE_Z1, Material.AIR);
+            replaceIf(b, x, Y + 1, LANE_Z1, Material.POLISHED_BLACKSTONE_SLAB, Material.AIR);
             // build() stands a column every 6 blocks in front of the walls (x = -R+1, -R+7, ...).
             boolean column = Math.floorMod(x - (-R + 1), 6) == 0;
             for (int y = Y + 1; y <= Y + 4; y++) {
-                b.set(x, y, -R + 1, column ? Material.POLISHED_BLACKSTONE_WALL : Material.AIR);
+                replaceIf(b, x, y, -R + 1, Material.HAY_BLOCK, column ? Material.POLISHED_BLACKSTONE_WALL : Material.AIR);
             }
+        }
+    }
+
+    /** Puts {@code now} at (x, y, z) if the block there is still {@code lane}. */
+    private static void replaceIf(Builder b, int x, int y, int z, Material lane, Material now) {
+        if (b.type(x, y, z) == lane) {
+            b.set(x, y, z, now);
         }
     }
 }

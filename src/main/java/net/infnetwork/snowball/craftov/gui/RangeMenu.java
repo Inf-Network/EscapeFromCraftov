@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Shooting-range weapon rack: free loaner guns (loaded, unlimited reserve on the range) and optics
  * to try on them, carried in the loaner rig and backpack the range puts on (RangeService). Loaners
- * are marked and taken back when the player leaves the firing line. Its bottom row also tries out
+ * are marked and taken back when the player leaves the range. Its bottom row also tries out
  * operators and their skills (OperatorService) and clears the bullseyes (RangeTargets).
  */
 final class RangeMenu extends Menu {
@@ -78,8 +78,10 @@ final class RangeMenu extends Menu {
             Notify.error(viewer, "请先从大厅的靶场入口进入个人靶场");
             return;
         }
-        ItemStack stack = def.isGun() ? plugin.items().sample(def) : plugin.items().create(def, 1);
-        ItemStack left = plugin.carry().give(viewer, plugin.items().markRange(stack), false);
+        ItemStack stack = plugin.items().markRange(def.isGun() ? plugin.items().sample(def) : plugin.items().create(def, 1));
+        // Attachments fill the rig before the backpack, which is the only room guns have besides the
+        // two gun keys: everything on the rack fits at once whatever order it is taken in.
+        ItemStack left = def.isGun() ? plugin.carry().give(viewer, stack, false) : plugin.carry().giveRigFirst(viewer, stack);
         if (left != null) {
             Notify.error(viewer, "身上放不下了");
             return;

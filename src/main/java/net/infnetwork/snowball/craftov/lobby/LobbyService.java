@@ -101,24 +101,19 @@ public final class LobbyService implements Listener {
         }
         if (fresh || !new File(folder, "craftov_lobby.built").exists()) {
             LobbyBuilder.build(world);
-            mark(folder, "craftov_lobby.built");
+            try {
+                new File(folder, "craftov_lobby.built").createNewFile();
+            } catch (java.io.IOException ignored) {
+            }
         }
-        if (!new File(folder, "craftov_lobby.no-lane").exists()) {
+        if (LobbyBuilder.hasLane(world)) {
             // A hangar built before #164 still has the old firing lane in its corner: plain hangar now.
             LobbyBuilder.clearLane(world);
-            mark(folder, "craftov_lobby.no-lane");
         }
         spawnStations();
         Bukkit.getScheduler().runTaskTimer(plugin, this::refreshLeaderboard, 40L, 20L * 30);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickPlayers, 40L, 40L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickRange, 10L, 10L);
-    }
-
-    private static void mark(File folder, String name) {
-        try {
-            new File(folder, name).createNewFile();
-        } catch (java.io.IOException ignored) {
-        }
     }
 
     public @Nullable World world() {

@@ -107,7 +107,10 @@ public final class StaminaService implements Listener {
         }
     }
 
-    /** Total carried weight in kilograms, cached for a second. */
+    /**
+     * Total carried weight in kilograms, cached for a second. Range loaners weigh nothing: the range
+     * slows nobody down, and a rig and backpack full of them read as overloaded.
+     */
     public double weight(Player player) {
         State s = state(player);
         long now = Bukkit.getCurrentTick();
@@ -115,7 +118,9 @@ public final class StaminaService implements Listener {
             s.weightTick = now;
             double total = 0;
             for (ItemStack stack : player.getInventory().getContents()) {
-                total += weightOf(stack);
+                if (!ItemFactory.isRange(stack)) {
+                    total += weightOf(stack);
+                }
             }
             s.weight = total;
         }

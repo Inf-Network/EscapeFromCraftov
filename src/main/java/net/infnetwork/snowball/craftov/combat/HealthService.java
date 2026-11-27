@@ -441,7 +441,9 @@ public final class HealthService implements Listener {
      * tick reaches it in the same health update, so the drop is marked to show (Nms.loudHealthLoss):
      * the update that carries the mark shows the true health.
      * <p>
-     * That update is sent at once, and that is what makes the view tilt at all. The player's own
+     * That update is sent at once (inside a damage event, as for a knock-down by a lethal hit, Paper
+     * holds it until ServerPlayer.hurtServer returns, still ahead of the entity data), and that is
+     * what makes the view tilt at all. The player's own
      * entity data carries the (scaled) health too: CraftPlayer.updateScaledHealth sets it, and the
      * entity tracker sends it to the player as well as to those tracking them. On the client it sets
      * the health without a tilt. The tracker runs in the world tick, before the connection tick sends

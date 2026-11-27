@@ -8,8 +8,7 @@
 //           bleed (its drop of health reaches the bot as a health update before its own entity data
 //           does: only then does a client tilt the view), and bandage and splint open the next
 //           gate; a lever countdown that runs out with the bot outside the extract sends it back to
-//           the lever ("再拉一次电闸"), and the
-//           lever again and 10 s in the extract end it. Back in the lobby: the black curtain, then the training settlement screen;
+//           the lever ("再拉一次电闸"), and the lever again and 10 s in the extract end it. Back in the lobby: the black curtain, then the training settlement screen;
 //           the inventory is exactly what it was, chat has the one summary line, and the saved
 //           profile has the same loadout, no raid in its stats, the guide's deploy and extract
 //           steps, no reward yet (the range and the gunsmith are still open) and no letter.

@@ -431,8 +431,8 @@ async function bleed (A, B, C) {
 
   // On to the end: B at 8 health bleeds out. The hit goes in half way between two bleed ticks,
   // timed off B's drip: in the same tick as a bleed it would come in the bleed's health update,
-  // which the bleed's quiet mark keeps from B's client (a /damage hit sends B no damage event to
-  // say it is a hit).
+  // which the bleed's quiet mark keeps from B's client, should a /damage hit not count as a hit
+  // there (whether it sends B a damage event is not settled: see overlap).
   const dripAt = () => { const d = B.heard.filter(h => /status\.bleed/.test(h.name)); return d.length ? d[d.length - 1].at : 0 }
   const lastDrip = dripAt()
   if (!await waitFor(() => dripAt() > lastDrip, 3000)) {

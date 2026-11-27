@@ -25,7 +25,6 @@ import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Zombie;
-import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.jspecify.annotations.Nullable;
@@ -227,11 +226,19 @@ public final class TrainingService {
             int index = i;
             int meters = (index + 1) * 10;
             Location at = new Location(raid.world, targets[i][0] + 0.5, TrainingGroundGenerator.G + 1, targets[i][1] + 0.5, 0, 0);
-            raid.world.spawn(at, Zombie.class, CreatureSpawnEvent.SpawnReason.CUSTOM, z -> {
+            // No random spawn data: a zombie spawned with it can come with random gear, a pumpkin
+            // head or (1 in 400) riding a chicken that walks the target around.
+            raid.world.spawn(at, Zombie.class, false, z -> {
                 z.setAI(false);
                 z.setAdult();
                 z.setSilent(true);
                 z.setPersistent(false);
+                // A zombie is a monster the server despawns at random (1 in 800 a tick, about 40 s on
+                // average) once it has been more than 32 blocks from every player for 30 seconds,
+                // counted from its spawn. The 30 m target is about 33 blocks from the middle of the
+                // firing line and 47 from the crate, so it often vanished before the player got to
+                // it, and the lesson could never be finished.
+                z.setRemoveWhenFarAway(false);
                 z.setShouldBurnInDay(false);
                 z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
                 z.getPersistentDataContainer().set(TARGET_INDEX, PersistentDataType.INTEGER, index);

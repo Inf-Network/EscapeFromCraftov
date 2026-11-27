@@ -56,6 +56,11 @@ class Grab:
         return results
 
 
+# Moments whose event did not happen (the click missed, the gate did not trip): their roll means
+# nothing, and a "still" for them would read like the bug was back.
+MISSED = set()
+
+
 def health(s):
     value = s.data('Health')
     return float(value.rstrip('fdF')) if value else None
@@ -130,9 +135,14 @@ def proving(s, tag, out, results):
         s.wait(1.5)
         s.mouse_to(*s.slot_center(47, 6))
         s.wait(1.2)
+        before = health(s)
         grab.mark('injury')
         s.xdo('click', '1')
         s.wait(1.5)
+        after = health(s)
+        if before is None or after is None or not after < before:
+            MISSED.add('injury')
+            print(f'hurtshake: 模拟受伤 took no health ({before} -> {after}): the click missed')
         s.key('Escape')
         s.rcon(f'cv injure {s.name} clear')
         stand(s, x, z)
@@ -142,6 +152,10 @@ def proving(s, tag, out, results):
         grab.mark('knockdown')
         s.rcon(f'damage {s.name} 500 minecraft:generic')
         s.wait(2)
+        down = health(s)
+        if down is None or down > 1.0:
+            MISSED.add('knockdown')
+            print(f'hurtshake: no knock-down (health {down})')
         slot = s.slot_of('revive_kit')
         if slot is not None:
             s.select(slot)
@@ -189,9 +203,14 @@ def training(s, tag, out, results):
         s.clear_chat()
         grab = Grab(s, out)
         s.wait(1)
+        before = health(s)
         grab.mark('tripwire')
         s.rcon(f'execute in {s.dimension()} run fill 45 65 9 45 67 11 minecraft:air')
         s.wait(1.5)
+        after = health(s)
+        if before is None or after is None or not after < before:
+            MISSED.add('tripwire')
+            print(f'hurtshake: the tripwire took no health ({before} -> {after})')
     finally:
         if grab:
             results += grab.stop()
@@ -209,12 +228,14 @@ def run(s):
     tag = s.arg or 'now'
     out = OUT / f'hurtshake-{tag}'
     results = []
+    MISSED.clear()
     try:
         proving(s, tag, out, results)
         training(s, tag, out, results)
     finally:
         for r in results:
-            verdict = 'SHAKES' if r['shakes'] else 'still'
+            r['happened'] = r['label'] not in MISSED
+            verdict = 'did not happen' if not r['happened'] else 'SHAKES' if r['shakes'] else 'still'
             print(f"hurtshake {tag:8} {r['label']:10} peak roll {r['peak'] if r['peak'] is not None else '-':>6} deg "
                   f"at {r['at_ms'] if r['at_ms'] is not None else '-':>5} ms (rise {r['rise'] if r['rise'] is not None else '-':>5}) "
                   f"over {r['frames']:3} frames: {verdict}")

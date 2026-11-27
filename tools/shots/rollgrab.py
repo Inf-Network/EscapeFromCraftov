@@ -83,6 +83,8 @@ def edge_line(image):
             # and the light one below: where the edge is, sharp or blurred (an open menu blurs the
             # world behind it and darkens it), whatever lies further down.
             dark, light = float(np.median(col[:8])), float(col.max())
+            # Less than 25 grey levels between the walls: no edge in this column (a menu over it, the
+            # sky), and a crossing found there would be noise.
             if light - dark < 25:
                 continue
             level = (dark + light) / 2
@@ -101,9 +103,12 @@ def edge_line(image):
     best = None
     for _ in range(200):
         i, j = rng.choice(len(xs), 2, replace=False)
+        # Two points closer than a fifth of the screen pin the slope too loosely to vote with.
         if abs(xs[i] - xs[j]) < 0.2 * w:
             continue
         slope = (ys[j] - ys[i]) / (xs[j] - xs[i])
+        # Within 2 px of the line: the edge is drawn sharp at this size; a blurred one is still found
+        # by its half-way crossing, so this does not need to be looser.
         inliers = np.abs(ys - (ys[i] + slope * (xs - xs[i]))) < 2.0
         if best is None or inliers.sum() > best.sum():
             best = inliers
@@ -255,8 +260,8 @@ def main():
                 # From the frame on the screen when the window opens: a still screen (a menu open,
                 # nothing moving) may not have changed for longer than the window.
                 frames = [(ft, im) for ft, im in buffer if ft <= mark + args.after]
-                first = max((i for i, (ft, _) in enumerate(frames) if ft <= mark - args.before), default=0)
-                kept.append((label, mark, [{'t': ft, 'image': im} for ft, im in frames[first:]]))
+                start = max((i for i, (ft, _) in enumerate(frames) if ft <= mark - args.before), default=0)
+                kept.append((label, mark, [{'t': ft, 'image': im} for ft, im in frames[start:]]))
                 pending.remove((label, mark))
         oldest = min([mark - args.before for _, mark in pending], default=t - args.before - 1.0)
         # Keeps the newest frame from before that too: it is what the screen showed then.

@@ -42,11 +42,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Private shooting ranges. Entering saves the player's lobby inventory and moves them to a copy of
- * the hangar's firing line in a separate world, one copy per player, far from all others and with
- * other players hidden, wearing a loaner rig and backpack. Leaving wipes everything they hold and
- * restores the saved inventory, so nothing handed out on the range can ever reach the lobby, the
- * stash or a raid. The saved
+ * Private shooting ranges, the one place outside a raid to shoot. Entering saves the player's lobby
+ * inventory and moves them to a firing lane built on a copy of the hangar's north-east corner in a
+ * separate world, one plot per player, far from all others and with other players hidden, wearing a
+ * loaner rig and backpack. Leaving wipes everything they hold and restores the saved inventory, so
+ * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that
  * overwrites the profile's loadout during the session can cost the player their gear.
  */
@@ -55,7 +55,7 @@ public final class RangeService implements Listener {
     public static final String WORLD = "craftov_range";
     public static final String EXIT = "range_exit";
     private static final int SPACING = 256;
-    // The hangar's firing line, copied block for block into every plot.
+    // The hangar's north-east corner, copied block for block into every plot under its firing lane.
     private static final int X0 = 6;
     private static final int X1 = LobbyBuilder.R + 1;
     private static final int Z0 = -LobbyBuilder.R - 1;
@@ -242,6 +242,8 @@ public final class RangeService implements Listener {
                 }
             }
         }
+        // The lobby itself has no lane any more (#164): the range is where shooting is done.
+        LobbyBuilder.lane(world, dx);
         List<Entity> spawned = new ArrayList<>();
         Location rack = new Location(world, dx + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
         spawned.add(world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
@@ -268,8 +270,8 @@ public final class RangeService implements Listener {
                         z.setAdult();
                         z.setSilent(true);
                         z.setPersistent(false);
-                        // Never despawned for being far from players, as the lobby's and the training
-                        // course's targets; release() removes them with the range.
+                        // Never despawned for being far from players, as the training course's
+                        // targets; release() removes them with the range.
                         z.setRemoveWhenFarAway(false);
                         z.setShouldBurnInDay(false);
                         z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);

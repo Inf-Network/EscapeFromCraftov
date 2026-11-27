@@ -25,7 +25,6 @@ import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -52,7 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** The operations hangar: join flow, loadout persistence, stations and the shooting range. */
+/** The operations hangar: join flow, loadout persistence, stations and the entrance to the private range. */
 public final class LobbyService implements Listener {
 
     public static final String WORLD = "craftov_lobby";
@@ -68,7 +67,7 @@ public final class LobbyService implements Listener {
             {"rank", "排位 · 战绩", "排行榜 · 行动报告", "craftov:ui/icon_rank"},
     };
 
-    /** The range weapon rack's spot on the hangar's firing line (and on every range plot, shifted). */
+    /** The range entrance's spot in the hangar, and the weapon rack's on every range plot (shifted). */
     static final double RACK_X = 9.5;
     static final double RACK_Z = -4.4;
 
@@ -92,7 +91,7 @@ public final class LobbyService implements Listener {
         WorldService.applyRules(world, false);
         world.setTime(6000);
         world.setSpawnLocation(0, LobbyBuilder.Y + 1, 0);
-        // Stations, the rack and range targets are non-persistent entities, which the server discards when
+        // Stations and the range entrance are non-persistent entities, which the server discards when
         // their chunk unloads (an empty server); keep the whole hangar loaded so they always exist.
         int r = LobbyBuilder.R + 2;
         for (int cx = Math.floorDiv(-r, 16); cx <= Math.floorDiv(r, 16); cx++) {
@@ -102,15 +101,24 @@ public final class LobbyService implements Listener {
         }
         if (fresh || !new File(folder, "craftov_lobby.built").exists()) {
             LobbyBuilder.build(world);
-            try {
-                new File(folder, "craftov_lobby.built").createNewFile();
-            } catch (java.io.IOException ignored) {
-            }
+            mark(folder, "craftov_lobby.built");
+        }
+        if (!new File(folder, "craftov_lobby.no-lane").exists()) {
+            // A hangar built before #164 still has the old firing lane in its corner: plain hangar now.
+            LobbyBuilder.clearLane(world);
+            mark(folder, "craftov_lobby.no-lane");
         }
         spawnStations();
         Bukkit.getScheduler().runTaskTimer(plugin, this::refreshLeaderboard, 40L, 20L * 30);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickPlayers, 40L, 40L);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tickRange, 10L, 10L);
+    }
+
+    private static void mark(File folder, String name) {
+        try {
+            new File(folder, name).createNewFile();
+        } catch (java.io.IOException ignored) {
+        }
     }
 
     public @Nullable World world() {
@@ -141,6 +149,7 @@ public final class LobbyService implements Listener {
         if (world == null) {
             return;
         }
+        // Left over from before a reload, and the dummies older builds stood in the hangar (#164).
         for (Entity entity : world.getEntities()) {
             if (entity.getPersistentDataContainer().has(Keys.key("station")) || isTarget(entity)) {
                 entity.remove();
@@ -176,7 +185,7 @@ public final class LobbyService implements Listener {
             d.setBackgroundColor(org.bukkit.Color.fromARGB(140, 10, 12, 16));
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "rank_board");
         });
-        // Weapon rack at the back of the firing line: loaner guns and optics for the range.
+        // The entrance to the private range, where its weapon rack stands on every plot.
         Location rack = new Location(world, RACK_X, LobbyBuilder.Y + 1, RACK_Z);
         world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
             d.setItemStack(UiItems.button("craftov:ui/tab_weapon", "靶场武器架", List.of(), "station"));
@@ -197,33 +206,6 @@ public final class LobbyService implements Listener {
             it.setPersistent(false);
             it.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         });
-        // Shooting range dummies.
-        int[][] targets = {{11, -13}, {15, -16}, {19, -20}};
-        for (int[] t : targets) {
-            world.spawn(new Location(world, t[0] + 0.5, LobbyBuilder.Y + 1, t[1] + 0.5, 0, 0), Zombie.class,
-                    false, z -> {
-                        z.setAI(false);
-                        z.setAdult();
-                        z.setSilent(true);
-                        z.setPersistent(false);
-                        // The 11 m dummy is 37 blocks from the spawn and the trader: a zombie that far
-                        // from every player is despawned at random, and these are only spawned at start.
-                        z.setRemoveWhenFarAway(false);
-                        z.setShouldBurnInDay(false);
-                        z.setInvulnerable(false);
-                        z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
-                        z.customName(Text.mm("<muted>训练靶 " + Math.abs(t[1] + 9) + "m"));
-                        z.setCustomNameVisible(true);
-                        ItemDef helmet = plugin.registry().get("helmet_3");
-                        ItemDef vest = plugin.registry().get("armor_3");
-                        if (helmet != null) {
-                            z.getEquipment().setHelmet(plugin.items().create(helmet, 1));
-                        }
-                        if (vest != null) {
-                            z.getEquipment().setChestplate(plugin.items().create(vest, 1));
-                        }
-                    });
-        }
         refreshLeaderboard();
     }
 
@@ -424,7 +406,7 @@ public final class LobbyService implements Listener {
         }
     }
 
-    /** Range loaners never leave the firing line: they are taken back as soon as the player steps out. */
+    /** Range loaners never leave the range: they are taken back as soon as the player steps out. */
     private void tickRange() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!inRange(player) && stripRangeItems(player) > 0) {

@@ -152,7 +152,10 @@ public abstract class Menu implements InventoryHolder {
 
     /**
      * Sends the whole window, the player's own cells and the cursor to the client as they are now.
-     * During a click it waits until the click has been handled. Once the listeners are done, Paper
+     * During a click it waits until the click has been handled, which is still inside the click
+     * event and so before Paper's own post-click sync: that is intended, the send carries the
+     * menu's final state and Paper then corrects any slot the client guessed otherwise. Once the
+     * listeners are done, Paper
      * takes the slots the client says it changed itself (its own prediction of the click: the
      * clicked cell emptied, say) as what the client shows, and corrects only those the server holds
      * differently. A send from the middle of the click, before the item left the window, would show

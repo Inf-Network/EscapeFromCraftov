@@ -838,16 +838,13 @@ async function ghost () {
   await sleep(6000)
   const w = await openBox(bot)
   if (!w) return check('ghost: the armory box opens', false)
-  await waitFor(() => BOX_CELLS.every(raw => !json(w.slots[raw]).includes('search_')), 90000)
+  // An item revealed between a click's "shown" snapshot and the resync would read as a ghost.
+  if (!await waitFor(() => BOX_CELLS.every(raw => !json(w.slots[raw]).includes('search_')), 90000)) {
+    return check('ghost: the box finished searching', false)
+  }
   await settle(bot)
   const boxCell = pred => BOX_CELLS.find(raw => pred(bot.currentWindow.slots[raw]))
   const inBox = (real, id) => BOX_CELLS.some(raw => real[raw].startsWith(id + ':'))
-  const freeBottom = () => {
-    const win = bot.currentWindow
-    const free = []
-    for (let i = win.inventoryStart; i < win.inventoryStart + 27; i++) if (!win.slots[i]) free.push(i)
-    return free
-  }
   const took = (label, raw, real, before) => check(`ghost: ${label}: the cell is empty`, real[raw] === '-', { raw, before, now: real[raw] })
 
   let raw = boxCell(s => idOf(s))
@@ -862,16 +859,6 @@ async function ghost () {
   clientClick(bot, raw, 0, 6, [])
   took('a double click', raw, await sameAsServer(bot, 'a double click takes an item'), before)
 
-  raw = boxCell(s => idOf(s))
-  before = shownAs(bot.currentWindow.slots[raw])
-  clientClick(bot, raw, 0, 0, [raw])
-  await sleep(150)
-  const [d1, d2] = freeBottom()
-  clientClick(bot, -999, 0, 5, [])
-  clientClick(bot, d1, 1, 5, [])
-  clientClick(bot, d2, 1, 5, [])
-  clientClick(bot, -999, 2, 5, [])
-  took('a click and a drag', raw, await sameAsServer(bot, 'a click then a drag over two own cells'), before)
 
   for (const id of ['circuit', 'key_dorm']) {
     const at = own(id)

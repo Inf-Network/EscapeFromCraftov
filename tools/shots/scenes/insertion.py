@@ -2,17 +2,20 @@
 the output, then optionally `@map` (default rustport) and `+mate`, e.g. `insertion:before`,
 `insertion:after@proving` or `insertion:squad+mate`.
 
-Queues the map solo (with +mate: a party with a puppet squadmate, ShotMate, as a trio) and records
-from the black curtain over the jump into the raid world until well after landing, then leaves
-through the always-open extract (or ends the raid, alone in it). The squadmate flies in on the same
-camera; its spectator head is wherever the server puts it, so a squadmate showing up in the view
-shows here. It leaves the raid by disconnecting.
+Queues the map solo and records from the black curtain over the jump into the raid world until
+well after landing, then leaves through the always-open extract (or ends the raid, alone in it).
+With +mate a puppet, ShotMate, leads a party that the camera player joins, and queues it as a trio:
+the camera player is then the squad's second member, who lands on the second insertion point, a
+couple of blocks from the first (the one a single squad camera used to end at). The puppet leaves
+the raid by disconnecting.
 
 Shots: insertion-<tag>-landed (just after landing). In tools/shots/out/insertion/:
 insertion-<tag>-motion.png (how much the picture changed on every frame the client drew),
-insertion-<tag>-strip.png (12 frames in a row from the middle of the flight), insertion-<tag>.gif,
+insertion-<tag>-strip.png (12 frames in a row from the middle of the flight),
+insertion-<tag>-landing.png (the flight's last frame beside the view once landed), insertion-<tag>.gif,
 insertion-<tag>.json and the frames in insertion-<tag>/. Prints the summary: drawn frames, how many
-moved, holds (the view standing still) and jumps. Two runs side by side:
+moved, holds (the view standing still), jumps and landing_offset (how far the view on landing is
+from the flight's last frame). Two runs side by side:
 `python3 tools/shots/flightgrab.py --compare A.json B.json --out PREFIX`.
 """
 import contextlib
@@ -26,7 +29,7 @@ OUT = SHOTS / 'out' / 'insertion'
 FLIGHT = 11  # seconds recorded after the jump: the curtain, the flight (about 6.5 s) and the landing
 
 
-def fly(s, map_id, label, mode):
+def fly(s, map_id, label, mode, leader=None):
     before = s.raids()
     grab = subprocess.Popen(['/usr/bin/python3', '-I', str(SHOTS / 'flightgrab.py'), '--display', s.display,
                              '--out', str(OUT), '--label', label],
@@ -34,7 +37,10 @@ def fly(s, map_id, label, mode):
     if grab.stdout.readline().strip() != 'ready':
         raise RuntimeError('flightgrab did not start')
     try:
-        s.cmd(f'cv queue {map_id} NORMAL {mode}')
+        if leader is None:
+            s.cmd(f'cv queue {map_id} NORMAL {mode}')
+        else:
+            leader.send(f'chat /cv queue {map_id} NORMAL {mode}')
         # In the raid world as a spectator: on the camera (in_raid waits for the landing).
         s.wait_until(lambda: 'craftov_raid' in s.dimension(), 150, f'the {map_id} raid to start')
         grab.stdin.write(f'mark {time.time():.3f}\n')
@@ -62,11 +68,11 @@ def run(s):
         s.extract(map_id, fly(s, map_id, label, 'SOLO'))
         return
     with s.puppet() as puppet:
-        s.cmd(f'cv party invite {puppet.name}')
+        puppet.send(f'chat /cv party invite {s.name}')
         s.wait(1)
-        puppet.send('chat /cv party accept')
+        s.cmd('cv party accept')
         s.wait(1)
-        mine = fly(s, map_id, label, 'TRIO')
+        mine = fly(s, map_id, label, 'TRIO', leader=puppet)
     # The squadmate has left (its stand-in stays): alone in the raid now.
     with contextlib.suppress(Exception):
         s.cmd('cv party leave')

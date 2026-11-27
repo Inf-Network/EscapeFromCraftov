@@ -22,16 +22,19 @@ a little on every frame it draws; one that jumps from one position to the next h
 them (the frames in between change only where something animates: under 1%) and then changes a lot
 at once. The flight counts from the curtain lifting (CURTAIN seconds after it came down) to the
 landing (LANDED), or the last frame that moved if that is later. The landing itself usually counts
-as one jump: the hand, the hotbar and the landing title come up.
+as one jump: the hand, the hotbar and the landing title come up. The landing is the first frame
+with the hotbar (spectators have none); the last frame of the flight is compared with the view once
+landed (the last frame recorded) over the upper half of the screen, and DIR/<label>-landing.png
+shows the two side by side.
 
 Writes DIR/<label>.json (per drawn frame: ms, the change and the change per 50 ms),
 DIR/<label>-motion.png (the change per 50 ms of every drawn frame over the flight),
 DIR/<label>-strip.png (12 frames in a row from the middle of the flight, each with its time and
 change), DIR/<label>.gif (the flight as the screen showed it, 20 frames a second) and
 DIR/<label>/*.jpg (every drawn frame), and prints one JSON line: {label, frames, frame_ms, moving,
-holds, longest_hold_ms, jumps, ...}: the frames drawn in the flight, how many moved, the still
-stretches of HOLD_MS or longer, and the jumps (a frame that changed a lot after frames that hardly
-did).
+holds, longest_hold_ms, jumps, ..., landing_offset}: the frames drawn in the flight, how many moved,
+the still stretches of HOLD_MS or longer, the jumps (a frame that changed a lot after frames that
+hardly did) and how far the view on landing is from the flight's last frame.
 
     python3 flightgrab.py --redo DIR/<label>.json --out DIR
 
@@ -39,7 +42,8 @@ measures a run again from its saved frames (after the measure changed), and
 
     python3 flightgrab.py --compare DIR_A/<a>.json DIR_B/<b>.json --out OUT_PREFIX
 
-puts two runs side by side: OUT_PREFIX.png (both motion charts and strips) and OUT_PREFIX.gif.
+puts two runs side by side: OUT_PREFIX.png (both motion charts and strips, and both landing
+sheets) and OUT_PREFIX.gif.
 
 Run with the system python3 (Pillow built with XCB, numpy); the shots venv has neither.
 """
@@ -85,6 +89,16 @@ CURTAIN = 1.45
 # And the squad lands about this long after it came down.
 LANDED = 6.9
 GIF_FPS = 20
+# Where the view is compared before and after landing: the upper half less the HUD panel in its top
+# left corner (taller with squadmates listed), the compass at the top and the crosshair. The landing
+# title, the hand, the hotbar and the chat are all lower down, and the frame after landing it is
+# compared with is the last one recorded, seconds later, when the title has gone.
+LANDING_MASK = np.zeros((SMALL[1], SMALL[0]), bool)
+LANDING_MASK[int(0.08 * SMALL[1]):int(0.5 * SMALL[1]), :] = True
+LANDING_MASK[:int(0.50 * SMALL[1]), :int(0.36 * SMALL[0])] = False
+LANDING_MASK[int(0.40 * SMALL[1]):, int(0.45 * SMALL[0]):int(0.55 * SMALL[0])] = False
+# The hotbar, which comes up on landing (spectators have none): bottom middle.
+HOTBAR = (0.38, 0.93, 0.62, 1.0)
 
 
 def font(size):
@@ -98,11 +112,37 @@ def grey(image):
     return np.asarray(image.convert('L').resize(SMALL, Image.BILINEAR), dtype=np.float32)
 
 
-def change(a, b):
+def change(a, b, mask=MASK):
     """How much grey frame b differs from a, each taken relative to its own mean brightness, over
-    MASK: in % of the brightness."""
-    wa, wb = a[MASK], b[MASK]
+    the mask: in % of the brightness."""
+    wa, wb = a[mask], b[mask]
     return float(np.abs(wa / max(wa.mean(), 1.0) - wb / max(wb.mean(), 1.0)).mean()) * 100
+
+
+def landing(frames):
+    """The index of the first frame after landing, or None: the first of the frames at the end whose
+    hotbar matches the last frame's (recorded seconds after landing; spectators have no hotbar)."""
+    def bar(f):
+        h, w = f['grey'].shape
+        return f['grey'][int(HOTBAR[1] * h):int(HOTBAR[3] * h), int(HOTBAR[0] * w):int(HOTBAR[2] * w)]
+    last = bar(frames[-1])
+    i = len(frames) - 1
+    while i > 0 and float(np.abs(bar(frames[i - 1]) - last).mean()) < 6:
+        i -= 1
+    return i if 0 < i < len(frames) - 1 else None
+
+
+def landing_sheet(path, label, before, after, offset):
+    """The last frame of the flight beside the view once landed, and how much they differ."""
+    w, h = 640, 360
+    canvas = Image.new('RGB', (2 * w + 12, h + 74), BG)
+    draw = ImageDraw.Draw(canvas)
+    draw.text((12, 8), f"{label}：运镜最后一帧 / 落地后的画面（上半部分相差 {offset:.1f}%，几秒里云飘动本身就有几个 %）",
+              font=font(22), fill=GOLD)
+    for k, (caption, f) in enumerate((('运镜最后一帧', before), ('落地后（标题消失后）', after))):
+        canvas.paste(f['image'].convert('RGB').resize((w, h)), (k * (w + 12), 44))
+        draw.text((k * (w + 12) + 8, 44 + h + 2), f"{caption}  {f['ms']} ms", font=font(18), fill=TEXT)
+    canvas.save(path)
 
 
 def measure(label, frames, mark, out, save=True):
@@ -150,6 +190,13 @@ def measure(label, frames, mark, out, save=True):
                'jumps_at_ms': [f['ms'] for f in jumps], 'largest_change': round(max(steps, default=0), 1),
                'flight_ms': [round((start - zero) * 1000), round((last_move - zero) * 1000)],
                'median_change': round(median, 3), 'mark_ms': round((mark - zero) * 1000)}
+    # The view on landing: the last frame of the flight against the view once landed. The same view
+    # (the flight ended in the player's eyes) differs by little more than the clouds drifting.
+    landed = landing(frames)
+    if landed is not None:
+        offset = change(frames[landed - 1]['grey'], frames[-1]['grey'], LANDING_MASK)
+        summary['landing_ms'] = frames[landed]['ms']
+        summary['landing_offset'] = round(offset, 2)
     if save:
         (out / label).mkdir(exist_ok=True)
         for f in frames:
@@ -163,6 +210,8 @@ def measure(label, frames, mark, out, save=True):
     }, indent=1), encoding='utf-8')
     motion_chart(out / f'{label}-motion.png', summary, frames)
     strip(out / f'{label}-strip.png', summary, frames)
+    if landed is not None:
+        landing_sheet(out / f'{label}-landing.png', label, frames[landed - 1], frames[-1], summary['landing_offset'])
     gif(out / f'{label}.gif', frames, start - 0.3, last_move + 0.6, zero)
     return summary
 
@@ -286,13 +335,19 @@ def compare(a_path, b_path, prefix):
     b, fb = load(b_path)
     width, chart_h = 1600, 420
     strip_h = 50 + 2 * (round(width / 6 * 9 / 16) + 30)
-    canvas = Image.new('RGB', (width, 2 * (chart_h + strip_h) + 20), BG)
+    # Each run's landing sheet (written by measure) goes underneath.
+    sheets = [Image.open(Path(path).with_name(Path(path).stem + '-landing.png')).convert('RGB')
+              for path in (a_path, b_path) if Path(path).with_name(Path(path).stem + '-landing.png').exists()]
+    canvas = Image.new('RGB', (width, 2 * (chart_h + strip_h + 20) + sum(s.height + 20 for s in sheets)), BG)
     top = 0
     for data, frames in ((a, fa), (b, fb)):
         motion_chart(None, data, frames, width, chart_h, canvas, top)
         top += chart_h
         top += strip(None, data, frames, canvas, top, width)
         top += 20
+    for sheet_image in sheets:
+        canvas.paste(sheet_image, (0, top))
+        top += sheet_image.height + 20
     canvas.save(f'{prefix}.png')
     # The GIF: both flights from their curtain lifting, side by side, as long as the longer one.
     size = (400, 225)

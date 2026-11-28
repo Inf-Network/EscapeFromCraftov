@@ -7,6 +7,9 @@
 //            the inventory screen) is picked up again onto key 1 without switching slots; Q on the
 //            own K47 with only armory 7.62 rounds in a pocket names the armory rule, and with own
 //            rounds there finds them.
+//   loadout  the stash's loadout panel (#185): worn gear, key 1 and the knife show; a click puts the
+//            gun on key 1 and the backpack into the stash; with no backpack a vest taken out swaps
+//            with the worn one; the gun and the backpack come back out.
 //   zones    a new account (starter rig_1 + pack_1): each carry zone has locked cells, and exactly
 //            one of them per zone shows a tooltip. Ammo, a gold bar, a rifle and a bandage given
 //            land where their category goes: ammo and the bandage on a free quick key (4-8), the
@@ -56,7 +59,7 @@
 //            shift-clicked into the box and worn again with a right click, and take all. Each case
 //            also checks that the click did what it should (the cell emptied, the item arrived).
 //
-//   PORT=25565 RCON_PORT=25575 node carryui.js [gear gun zones rules matrix info cursor stash trader preset secure loot ghost]
+//   PORT=25565 RCON_PORT=25575 node carryui.js [gear gun loadout zones rules matrix info cursor stash trader preset secure loot ghost]
 //
 // The server needs test.enabled (secure, loot and ghost queue for the proving ground). Bots use random
 // names (new accounts with the starter kit); trader, preset and secure prepare the profile by
@@ -502,6 +505,48 @@ async function gun () {
   bot.quit()
 }
 
+/**
+ * The stash's loadout panel (#185): the worn gear and keys 1-8 show on the right; a click puts the
+ * gun on key 1 and then the backpack (packed) into the stash, and taking them out puts them back.
+ * With no backpack, taking out a vest swaps it for the worn one, which goes into the stash.
+ */
+async function loadout () {
+  const bot = await make('Cl')
+  await settle(bot)
+  await cmd(`cv give ${bot.username} armor_3 1`) // into the backpack: the vest slot is taken
+  await settle(bot, 600)
+  const w = await openWith(bot, () => bot.chat('/cv stash'))
+  if (!w) return check('loadout: the stash opens', false)
+  const win = () => bot.currentWindow || w
+  for (let i = w.inventoryStart; i < w.slots.length; i++) {
+    if (idOf(win().slots[i]) === 'armor_3') { await bot.clickWindow(i, 0, 0); break }
+  }
+  await settle(bot)
+  const at = slot => idOf(win().slots[slot])
+  const stored = id => win().slots.map((s, i) => [i, s]).find(([i, s]) => i >= 9 && i < 45 && i % 9 < 6 && idOf(s) === id)?.[0]
+  const head = await wornId(bot, 'head')
+  const chest = await wornId(bot, 'chest')
+  const pack = await wornId(bot, 'feet')
+  const key1 = idOf(bot.inventory.slots[36])
+  check('loadout: the panel shows the worn gear, key 1 and the knife', at(15) === head && at(24) === chest && at(42) === pack
+    && at(16) === key1 && !!at(25), { head, chest, pack, key1, panel: [15, 24, 33, 42, 16, 17, 25].map(at) })
+  await bot.clickWindow(16, 0, 0); await settle(bot)
+  check('loadout: a click on key 1 puts the gun into the stash', !at(16) && !idOf(bot.inventory.slots[36]) && stored(key1) !== undefined,
+    { panel: at(16), key1: idOf(bot.inventory.slots[36]), stored: stored(key1) })
+  await bot.clickWindow(42, 0, 0); await settle(bot)
+  check('loadout: a click on the backpack puts it into the stash', !at(42) && !await wornId(bot, 'feet') && stored(pack) !== undefined,
+    { panel: at(42), stored: stored(pack) })
+  await bot.clickWindow(stored('armor_3'), 0, 0); await settle(bot)
+  check('loadout: with no backpack a vest taken out is swapped for the worn one', await wornId(bot, 'chest') === 'armor_3'
+    && at(24) === 'armor_3' && stored(chest) !== undefined, { chest: await wornId(bot, 'chest'), stored: stored(chest) })
+  await bot.clickWindow(stored(key1), 0, 0); await settle(bot)
+  await bot.clickWindow(stored(pack), 0, 0); await settle(bot)
+  check('loadout: the gun and the backpack come back out', idOf(bot.inventory.slots[36]) === key1 && await wornId(bot, 'feet') === pack
+    && at(16) === key1 && at(42) === pack, { key1: idOf(bot.inventory.slots[36]), pack: await wornId(bot, 'feet') })
+  bot.closeWindow(win())
+  bot.quit()
+}
+
 async function stash () {
   const bot = await make('Cs')
   await settle(bot)
@@ -516,7 +561,8 @@ async function stash () {
     if (['laptop', 'gold_bar', 'circuit', 'screws'].includes(idOf(win().slots[i]))) { await bot.clickWindow(i, 0, 0); await sleep(300) }
   }
   await settle(bot)
-  const items = () => win().slots.slice(9, 45).map((s, i) => [i + 9, s]).filter(([, s]) => idOf(s))
+  // Stored items fill six columns of rows 1-4; columns 6-8 are the loadout panel (#185).
+  const items = () => win().slots.slice(9, 45).map((s, i) => [i + 9, s]).filter(([slot, s]) => slot % 9 < 6 && idOf(s))
   const total = () => items().length
   const balance = () => Number((nameOf(win().slots[49]) + loreOf(win().slots[49]).join(' ')).match(/块币 ◈([\d,]+)/)?.[1].replace(/,/g, '') || -1)
   const startMoney = balance()
@@ -931,7 +977,7 @@ async function ghost () {
   } else {
     clientClick(bot, ammo, 0, 0, [ammo])
     real = await sameAsServer(bot, 'the stash, an item put in')
-    const cell = real.findIndex((s, raw) => raw >= 9 && raw < 45 && s.startsWith('ammo_9_fmj:'))
+    const cell = real.findIndex((s, raw) => raw >= 9 && raw < 45 && raw % 9 < 6 && s.startsWith('ammo_9_fmj:'))
     check('ghost: the rounds went into the stash', cell >= 0 && own('ammo_9_fmj') < 0, cell)
     if (cell >= 0) {
       clientClick(bot, cell, 0, 0, [cell])
@@ -1028,7 +1074,7 @@ async function ghost () {
 }
 
 ;(async () => {
-  const all = { gear, gun, zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
+  const all = { gear, gun, loadout, zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
   for (const name of scenarios) {
     try {
       await all[name]()

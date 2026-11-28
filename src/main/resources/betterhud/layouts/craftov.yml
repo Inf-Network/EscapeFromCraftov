@@ -328,57 +328,22 @@ craftov_vitals:
       x: 22
       y: 13
     '39':
-      name: craftov_stamina_empty
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-    '40':
-      name: craftov_stamina_bar
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-        '2':
-          first: craftov_overloaded
-          second: 'false'
-          operation: ==
-    '41':
-      name: craftov_stamina_bar_heavy
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-        '2':
-          first: craftov_overloaded
-          second: 'true'
-          operation: ==
-    '42':
       name: craftov_armor_empty
       x: 22
       y: 34
-    '43':
+    '40':
       name: craftov_helmet_bar
       x: 22
       y: 34
-    '44':
+    '41':
       name: craftov_armor_empty
       x: 56
       y: 34
-    '45':
+    '42':
       name: craftov_armor_bar
       x: 56
       y: 34
-    '46':
+    '43':
       name: craftov_icon_bleed
       x: 58
       y: 2
@@ -391,7 +356,7 @@ craftov_vitals:
           first: craftov_inj_heavy
           second: 'false'
           operation: ==
-    '47':
+    '44':
       name: craftov_icon_heavy
       x: 58
       y: 2
@@ -400,7 +365,7 @@ craftov_vitals:
           first: craftov_inj_heavy
           second: 'true'
           operation: ==
-    '48':
+    '45':
       name: craftov_icon_fracture
       x: 68
       y: 2
@@ -409,7 +374,7 @@ craftov_vitals:
           first: craftov_inj_fracture
           second: 'true'
           operation: ==
-    '49':
+    '46':
       name: craftov_icon_pain
       x: 78
       y: 2
@@ -420,11 +385,11 @@ craftov_vitals:
           operation: ==
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#7FD1AE>❤ [craftov_hp]
       x: 22
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -433,11 +398,11 @@ craftov_vitals:
           second: 0
           operation: ==
     '2':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#F2B544>❤ [craftov_hp]
       x: 22
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -446,11 +411,11 @@ craftov_vitals:
           second: 1
           operation: ==
     '3':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#E5484D>❤ [craftov_hp]
       x: 22
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -459,19 +424,19 @@ craftov_vitals:
           second: 2
           operation: ==
     '4':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>盔<#E9E5DA>[craftov_helmet_class]
       x: 22
       y: 31
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
     '5':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>甲<#8AB4F8>[craftov_armor_class]
       x: 56
       y: 31
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -506,19 +471,19 @@ craftov_weapon:
           operation: ==
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#E9E5DA>[craftov_weapon]
       x: 114
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
     '2':
-      name: craftov_font
+      name: craftov_text
       pattern: <white>[craftov_ammo]
       x: 40
-      y: 12
-      scale: 1.0
+      y: 18
+      scale: 0.5
       align: right
       outline: true
       conditions:
@@ -527,11 +492,11 @@ craftov_weapon:
           second: 'false'
           operation: ==
     '3':
-      name: craftov_font
+      name: craftov_text
       pattern: <#E5484D>[craftov_ammo]
       x: 40
-      y: 12
-      scale: 1.0
+      y: 18
+      scale: 0.5
       align: right
       outline: true
       conditions:
@@ -540,27 +505,27 @@ craftov_weapon:
           second: 'true'
           operation: ==
     '4':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>／[craftov_reserve]
       x: 42
       y: 24
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
     '5':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#F2B544>[craftov_firemode]
       x: 114
       y: 22
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
     '6':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>[craftov_ammo_type]
       x: 114
       y: 34
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
       conditions:
@@ -569,11 +534,11 @@ craftov_weapon:
           second: 'false'
           operation: ==
     '7':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_weapon_hint]'
       x: 114
       y: 34
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
       conditions:
@@ -587,6 +552,36 @@ craftov_weapon:
       second: 'true'
       operation: ==
   offset: left
+craftov_stamina:
+  images:
+    '1':
+      name: craftov_stamina_empty
+      x: 0
+      y: 0
+    '2':
+      name: craftov_stamina_bar
+      x: 1
+      y: 1
+      conditions:
+        '1':
+          first: craftov_stamina_state
+          second: 1
+          operation: ==
+    '3':
+      name: craftov_stamina_bar_heavy
+      x: 1
+      y: 1
+      conditions:
+        '1':
+          first: craftov_stamina_state
+          second: 2
+          operation: ==
+  conditions:
+    '1':
+      first: craftov_stamina_shown
+      second: 'true'
+      operation: ==
+  offset: left
 craftov_skill:
   images:
     '1':
@@ -595,11 +590,11 @@ craftov_skill:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#F2B544>[craftov_operator] <#A4AAB3>· [craftov_skill]
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -616,19 +611,19 @@ craftov_info:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>[craftov_map] · [craftov_tier]
       x: 6
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
     '2':
-      name: craftov_font
+      name: craftov_text
       pattern: <#E9E5DA>[craftov_time]
       x: 6
-      y: 13
-      scale: 1.0
+      y: 19
+      scale: 0.5
       align: left
       outline: true
       conditions:
@@ -637,11 +632,11 @@ craftov_info:
           second: 0
           operation: ==
     '3':
-      name: craftov_font
+      name: craftov_text
       pattern: <#F2B544>[craftov_time]
       x: 6
-      y: 13
-      scale: 1.0
+      y: 19
+      scale: 0.5
       align: left
       outline: true
       conditions:
@@ -650,11 +645,11 @@ craftov_info:
           second: 1
           operation: ==
     '4':
-      name: craftov_font
+      name: craftov_text
       pattern: <#E5484D>[craftov_time]
       x: 6
-      y: 13
-      scale: 1.0
+      y: 19
+      scale: 0.5
       align: left
       outline: true
       conditions:
@@ -663,19 +658,19 @@ craftov_info:
           second: 2
           operation: ==
     '5':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#F2B544>◈ [craftov_value_short]
       x: 72
       y: 26
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
     '6':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>撤离 <#E9E5DA>[craftov_nearest]
       x: 6
       y: 40
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -692,11 +687,11 @@ craftov_mate_1:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_mate_1]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -717,11 +712,11 @@ craftov_mate_2:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_mate_2]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -737,11 +732,11 @@ craftov_mate_2:
 craftov_feed_1:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_feed_1]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
   conditions:
@@ -753,11 +748,11 @@ craftov_feed_1:
 craftov_feed_2:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_feed_2]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
   conditions:
@@ -769,11 +764,11 @@ craftov_feed_2:
 craftov_feed_3:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_feed_3]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
   conditions:
@@ -785,11 +780,11 @@ craftov_feed_3:
 craftov_feed_4:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_feed_4]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
   conditions:
@@ -801,11 +796,11 @@ craftov_feed_4:
 craftov_feed_5:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_feed_5]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: right
       outline: true
   conditions:
@@ -822,11 +817,11 @@ craftov_objective:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_objective]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -847,11 +842,11 @@ craftov_objective_raid_0:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_objective]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -880,11 +875,11 @@ craftov_objective_raid_1:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_objective]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -913,11 +908,11 @@ craftov_objective_raid_2:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_objective]'
       x: 6
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
   conditions:
@@ -938,24 +933,595 @@ craftov_objective_raid_2:
       second: 'true'
       operation: ==
   offset: left
-craftov_alert:
+craftov_alert_raid_0_false:
   images:
     '1':
-      name: craftov_alert_band
+      name: craftov_panel_alert
       x: 0
       y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
   texts:
     '1':
-      name: craftov_pixel
-      pattern: '[craftov_alert]'
-      x: 150
-      y: 10
-      scale: 1.0
-      align: center
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
       outline: true
   conditions:
     '1':
-      first: craftov_has_alert
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'false'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_0_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'false'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_1_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_1_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_2_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_alert_raid_2_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_alert_lobby_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_lobby_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_text
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 0.25
+      align: left
+      outline: true
+    '2':
+      name: craftov_text
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 0.25
+      align: left
+      outline: true
+    '3':
+      name: craftov_text
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 0.25
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
       second: 'true'
       operation: ==
   offset: left
@@ -967,11 +1533,11 @@ craftov_prompt:
       y: -1
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_prompt]'
       x: 100
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: center
       outline: true
   conditions:
@@ -996,19 +1562,19 @@ craftov_extract:
       y: 30
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#7FD1AE>撤离中
       x: 60
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: center
       outline: true
     '2':
-      name: craftov_font
+      name: craftov_text
       pattern: <white>[craftov_extract_left]
       x: 60
-      y: 12
-      scale: 1.0
+      y: 18
+      scale: 0.5
       align: center
       outline: true
   conditions:
@@ -1029,11 +1595,11 @@ craftov_downed:
       y: 13
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#E5484D>倒地 · [craftov_downed_hint]
       x: 60
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: center
       outline: true
   conditions:
@@ -1054,11 +1620,11 @@ craftov_med:
       y: 13
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#7FC8D1>[craftov_med_name] <white>[craftov_med_left]s
       x: 60
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: center
       outline: true
   conditions:
@@ -1075,11 +1641,11 @@ craftov_lobby:
       y: 0
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>大厅 · 干员 <#E9E5DA>[craftov_operator]
       x: 6
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -1088,11 +1654,11 @@ craftov_lobby:
           second: 'false'
           operation: ==
     '2':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>靶场 · 干员 <#E9E5DA>[craftov_operator]
       x: 6
       y: 10
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -1101,27 +1667,27 @@ craftov_lobby:
           second: 'true'
           operation: ==
     '3':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#F2B544>◈
       x: 6
       y: 26
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
     '4':
-      name: craftov_font
+      name: craftov_text
       pattern: <#F2B544>[craftov_money_text]
       x: 18
-      y: 13
-      scale: 1.0
+      y: 19
+      scale: 0.5
       align: left
       outline: true
     '5':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>战备值 <#E9E5DA>◈ [craftov_value_short]
       x: 6
       y: 40
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -1130,11 +1696,11 @@ craftov_lobby:
           second: 'false'
           operation: ==
     '6':
-      name: craftov_pixel
+      name: craftov_text
       pattern: <#A4AAB3>技能 <#E9E5DA>[craftov_skill]
       x: 6
       y: 40
-      scale: 1.0
+      scale: 0.25
       align: left
       outline: true
       conditions:
@@ -1307,11 +1873,11 @@ craftov_crosshair:
 craftov_streak:
   texts:
     '1':
-      name: craftov_pixel
+      name: craftov_text
       pattern: '[craftov_streak]'
       x: 0
       y: 9
-      scale: 1.0
+      scale: 0.25
       align: center
       outline: true
   conditions:

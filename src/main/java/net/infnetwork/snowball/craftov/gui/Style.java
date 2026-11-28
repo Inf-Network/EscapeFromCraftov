@@ -1,5 +1,6 @@
 package net.infnetwork.snowball.craftov.gui;
 
+import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
@@ -13,8 +14,10 @@ import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
  * buttons and messages never borrow them.
  * <p>
  * Every MiniMessage string built through {@code Text.mm} understands the tokens as tags:
- * {@code <text> <muted> <dim> <accent> <ok> <danger> <info>}. Strings that BetterHud parses
- * itself (HUD placeholders) cannot use the tags and take {@link #tag} instead.
+ * {@code <text> <muted> <dim> <accent> <ok> <danger> <info>}, and {@code <heavy>}, the heavy face for
+ * the titles of the world's name labels (#181): the client's {@code <b>} draws the text font twice,
+ * 1 GUI px apart, which on a label seen up close is two thin copies with a seam between them. Strings
+ * that BetterHud parses itself (HUD placeholders) cannot use the tags and take {@link #tag} instead.
  */
 public final class Style {
 
@@ -35,9 +38,13 @@ public final class Style {
     public static final String MARK_WARN = "<accent>!</accent> ";
     public static final String MARK_FAIL = "<danger>✖</danger> ";
 
+    /** The labels' heavy face (tools/art/textfont.py, bold.ttf). */
+    public static final Key HEAVY_FONT = Key.key("craftov", "bold");
+
     private static final TagResolver TAGS = TagResolver.resolver(
             color("text", TEXT), color("muted", MUTED), color("dim", DIM), color("accent", ACCENT),
-            color("ok", OK), color("danger", DANGER), color("info", INFO));
+            color("ok", OK), color("danger", DANGER), color("info", INFO),
+            TagResolver.resolver("heavy", Tag.styling(style -> style.font(HEAVY_FONT))));
 
     private Style() {
     }

@@ -7,20 +7,22 @@ BG = rgb(PAL.PANEL, 190)
 ACCENT = rgb(PAL.ACCENT)
 
 
-def panel(w, h, accent=ACCENT, side='left'):
-    """A translucent panel with a hairline top edge and the amber tick on the outer side."""
+def panel(w, h, accent=ACCENT, side='left', top=True):
+    """A translucent panel with a hairline top edge and the amber tick on the outer side. Without the
+    top edge it continues the panel above it (the alert banner's second and third rows)."""
     img = Image.new('RGBA', (w, h), BG)
     d = ImageDraw.Draw(img)
-    d.line([(0, 0), (w - 1, 0)], fill=rgb(PAL.LINE, 230))
+    if top:
+        d.line([(0, 0), (w - 1, 0)], fill=rgb(PAL.LINE, 230))
     if side == 'left':
-        d.rectangle([0, 1, 1, h - 1], fill=accent)
+        d.rectangle([0, 1 if top else 0, 1, h - 1], fill=accent)
     else:
         d.rectangle([w - 2, 1, w - 1, h - 1], fill=accent)
     return img
 
 
 def band(w, h, accent=ACCENT):
-    """The alert banner: darker, with amber ticks at both ends."""
+    """A darker strip with a coloured top edge, behind the interaction prompt."""
     img = Image.new('RGBA', (w, h), rgb(PAL.BG, 215))
     d = ImageDraw.Draw(img)
     d.line([(0, 0), (w - 1, 0)], fill=accent)
@@ -60,6 +62,14 @@ def bar(w, h, color, empty=False):
         c = shade(color, 0.85 + 0.3 * t)
         d.line([(x, 0), (x, h - 1)], fill=c)
     d.line([(0, 0), (w - 1, 0)], fill=shade(color, 1.4))
+    return img
+
+
+def track(w, h):
+    """A bar's dark groove with a one-pixel rim: (w + 2) x (h + 2), the bar drawn 1 px in."""
+    img = Image.new('RGBA', (w + 2, h + 2), rgb(PAL.BG, 200))
+    d = ImageDraw.Draw(img)
+    d.rectangle([1, 1, w, h], fill=(255, 255, 255, 38))
     return img
 
 

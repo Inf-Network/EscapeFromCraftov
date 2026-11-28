@@ -761,7 +761,7 @@ def build_ui():
 
 # craftov:ui font (gui/UiFont.java): its own key, so nothing clashes with the U+E000 glyphs CraftEngine
 # puts in minecraft:default. Shift characters move the pen (negative 2^k at U+F800+k, positive at
-# U+F810+k), screen backgrounds sit at U+E100 onwards, and the pixel font fills in the text.
+# U+F810+k), screen backgrounds sit at U+E100 onwards, and the text font fills in the text.
 SHIFT_NEG, SHIFT_POS, SCREEN_BASE = 0xF800, 0xF810, 0xE100
 
 
@@ -789,11 +789,7 @@ def build_screens():
         advances[chr(SHIFT_NEG + k)] = -(1 << k)
         advances[chr(SHIFT_POS + k)] = 1 << k
     providers = [{'type': 'space', 'advances': advances}]
-    sheet, rows, _ = pixelfont.load()
-    save(sheet, os.path.join(CV, 'textures', 'font', 'pixel10.png'))
-    # Ascent 8 puts the glyphs' ink where vanilla's own 8 px text starts.
-    providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
-                      'chars': rows})
+    # The title text itself is the text font (#182): it falls through to minecraft:default below.
     meta = {}
     # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
     # older keep theirs.
@@ -812,7 +808,7 @@ def build_screens():
     # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
     save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
     providers.append({'type': 'bitmap', 'file': 'craftov:font/blackout.png', 'height': 192, 'ascent': 93, 'chars': ['']})
-    # Anything the pixel font lacks (a rare character in a player-made name) falls back to the game's font.
+    # The titles' text: the game's font, which is the rounded text font (build_fonts).
     providers.append({'type': 'reference', 'id': 'minecraft:default'})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
@@ -821,7 +817,8 @@ def build_screens():
 def build_fonts():
     """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
     lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
-    16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
+    16 px bitmap (menu titles too, through craftov:ui; only the labels drawn into the menu art keep the
+    pixel font).
     Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
     measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
     Whatever the face lacks falls through to vanilla's own providers, which the client keeps after
@@ -838,6 +835,11 @@ def build_fonts():
         licence = f.read()
     write_text(os.path.join(CV, 'font', 'text.license.txt'), licence + '\n' + source)
     write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
+    # craftov:bold (Style's <heavy>): the world labels' titles in the 700W face, and anything it lacks
+    # in the text font. The client's bold doubled the 500W strokes 1 GUI px apart into two copies (#181).
+    shutil.copyfile(textfont.BOLD_OUT, os.path.join(CV, 'font', 'bold.ttf'))
+    write_json(os.path.join(CV, 'font', 'bold.json'), {'providers': [textfont.provider('craftov:bold.ttf'),
+                                                                     {'type': 'reference', 'id': 'minecraft:default'}]})
     # A character the plugin prints that the subset lacks is drawn by vanilla's fonts. The face lacks
     # a few (textfont.lacking()); anything else is new text since the last bake.
     from fontTools.ttLib import TTFont
@@ -953,19 +955,24 @@ def build_pack_meta():
 
 # ---------------------------------------------------------------- BetterHud
 #
-# HUD composition (#6, #66). Text comes in two fonts, each drawn so one font pixel is a whole number of
-# GUI pixels, which keeps it sharp at every GUI scale: craftov_pixel, the 10 px pixel font (pixelfont.py)
-# at scale 1.0 for every label and anything Chinese, and craftov_font, vanilla's ASCII bitmap, at 1.0
-# (2 px per font pixel) for the big numbers. Unifont at the old 0.45-0.75 scales resampled each Chinese
-# glyph to a fraction of its size, which is what blurred the HUD at GUI scale 3.
+# HUD composition (#6, #66, #182). All text is the rounded text font of chat and item names (textfont.py,
+# 江城圆体), baked for BetterHud into a bitmap at 4 texels per GUI pixel (textfont.hud_sheet): craftov_text
+# at scale 1/4 (a 9 px em, as in chat) for every label and at 1/2 for the big numbers. The 10 px pixel
+# font it replaces was sharp but blocky; 4 texels per GUI pixel keep the outlines even at GUI scale 2-4.
 #
 # Placement: the vitals sit in the bottom-left band below the chat (the chat's bottom line is 40 px above
 # the screen edge) and stop short of the offhand slot even on a 426 px wide GUI (1280x720 at scale 3);
 # the weapon panel sits bottom-right above the hotbar's height; info and the squad top-left, the kill
-# feed top-right, alerts under the compass, prompts and progress under the crosshair.
+# feed top-right, prompts and progress under the crosshair. Alerts close the top-left column (#178):
+# under the compass, a banner wide enough for them overlapped the info panel on any GUI narrower
+# than about 580 px (1920x1080 at the auto GUI scale 4 is 480), and at 300 px its picture was too
+# wide for the client's 256 px glyph pages, so the client drew a missing-glyph box in its place and
+# the 296 px BetterHud had counted for it pushed the whole HUD sideways.
 
 TEXT, MUTED, DIM, ACCENT_HEX = palette.TEXT, palette.MUTED, palette.DIM, palette.ACCENT
 OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
+
+STAMINA_W = 100
 
 HUD_IMAGES = {
     'craftov/panel_vitals.png': lambda: hudart.panel(88, 38),
@@ -976,7 +983,9 @@ HUD_IMAGES = {
     # The new-player guide's objective line: wide in the lobby, the squad rows' width in a raid, where
     # the kill feed's rows reach in from the right on a 320 px wide GUI.
     'craftov/panel_objective.png': lambda: hudart.panel(200, 12, accent=rgb(palette.ACCENT)),
-    'craftov/alert_band.png': lambda: hudart.band(300, 14),
+    # The alert banner: one row per line of text, the rows after the first without the top edge.
+    'craftov/panel_alert.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_alert_more.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT), top=False),
     # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
     'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
@@ -991,9 +1000,10 @@ HUD_IMAGES = {
     'craftov/extract_bar.png': lambda: hudart.bar(120, 3, rgb(palette.OK)),
     'craftov/downed_bar.png': lambda: hudart.bar(120, 3, rgb(palette.DANGER)),
     'craftov/med_bar.png': lambda: hudart.bar(120, 3, rgb('#7FC8D1')),
-    'craftov/stamina_empty.png': lambda: hudart.bar(64, 1, (0, 0, 0, 0), empty=True),
-    'craftov/stamina_bar.png': lambda: hudart.bar(64, 1, rgb(palette.ACCENT)),
-    'craftov/stamina_bar_heavy.png': lambda: hudart.bar(64, 1, rgb(palette.DANGER)),
+    # The sprint stamina bar over the hotbar (#179): a dark track, amber, red while it cannot be used.
+    'craftov/stamina_empty.png': lambda: hudart.track(STAMINA_W, 2),
+    'craftov/stamina_bar.png': lambda: hudart.bar(STAMINA_W, 2, rgb(palette.ACCENT)),
+    'craftov/stamina_bar_heavy.png': lambda: hudart.bar(STAMINA_W, 2, rgb(palette.DANGER)),
     **{'craftov/icon_%s.png' % k: (lambda k=k: hudart.icon(k)) for k in ('bleed', 'heavy', 'fracture', 'pain')},
     'craftov/hit.png': lambda: hudart.marker((240, 240, 240, 255)),
     'craftov/hit_head.png': lambda: hudart.marker(rgb('#FFC23D')),
@@ -1029,19 +1039,24 @@ def cond(*pairs):
     return out
 
 
-def text(pattern, x, y, scale=1.0, align='left', conditions=None, font='craftov_pixel'):
-    """A HUD text. Only scale 1.0 (and 0.5 for craftov_font) keeps font pixels whole on screen."""
-    if font == 'craftov_pixel':
-        y += pixelfont.ASCENT  # BetterHud puts a bitmap glyph's ascent row at y; this makes y the cell top
-    t = {'name': font, 'pattern': pattern, 'x': x, 'y': y, 'scale': scale, 'align': align, 'outline': True}
+HUD_SCALE = 1 / textfont.HUD_OVERSAMPLE
+
+
+def text(pattern, x, y, scale=1, align='left', conditions=None):
+    """A HUD text in craftov_text; scale 2 is the big numbers. y is the top of the 12 px cell."""
+    # BetterHud puts a glyph's ascent row at y, and does not scale the ascent with the text.
+    y += textfont.HUD_ASCENT
+    t = {'name': 'craftov_text', 'pattern': pattern, 'x': x, 'y': y, 'scale': HUD_SCALE * scale, 'align': align,
+         'outline': True}
     if conditions:
         t['conditions'] = conditions
     return t
 
 
 def big(pattern, x, y, align='left', conditions=None):
-    """Big ASCII digits: vanilla's 8 px bitmap at 2 GUI px per font pixel."""
-    return text(pattern, x, y, 1.0, align, conditions, font='craftov_font')
+    """Big numbers: the text font at twice the size, 3 px up so the digits' ink (13 px tall) takes the
+    rows the old 14 px bitmap digits did and clears the row under them."""
+    return text(pattern, x, y - 3, 2, align, conditions)
 
 
 def image(name, x, y, conditions=None):
@@ -1049,6 +1064,28 @@ def image(name, x, y, conditions=None):
     if conditions:
         i['conditions'] = conditions
     return i
+
+
+ALERT_LINES = 3  # HudService.ALERT_LINES
+
+
+def alert_layout(*conditions):
+    rows = range(1, ALERT_LINES + 1)
+    return {'images': numbered([image('craftov_panel_alert' if i == 1 else 'craftov_panel_alert_more', 0, 12 * (i - 1),
+                                      cond(('craftov_has_alert_%d' % i, 'true'))) for i in rows]),
+            'texts': numbered([text('[craftov_alert_%d]' % i, 6, 12 * (i - 1)) for i in rows]),
+            'conditions': cond(('craftov_has_alert_1', 'true'), *conditions)}
+
+
+def hud_font_widths(sheet, rows):
+    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows): how far the HUD's
+    text font moves after each character at scale 1 (craftov_text), listing only those that do not
+    advance as far as a hanzi. A bitmap glyph advances by its inked width plus one."""
+    adv = textfont.hud_advances(sheet, rows)
+    default = adv['中']
+    advances = {' ': 4}
+    advances.update({ch: a for ch, a in adv.items() if a != default})
+    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances})
 
 
 def numbered(items):
@@ -1059,23 +1096,20 @@ def c(hex_color):
     return '<' + hex_color + '>'
 
 
-def hud_pixel_font():
-    """The 10 px pixel font (pixelfont.py) as a BetterHud bitmap text font: one sheet of full rows plus
-    the last, shorter row on its own, since every row of a sheet must hold the same number of glyphs.
-    BetterHud draws a bitmap font at scale x cell height, so at scale 1.0 one font pixel is one GUI pixel."""
-    sheet, rows, _ = pixelfont.load()
-    full = [r for r in rows if '\0' not in r]
+def hud_text_font(sheet, rows):
+    """The text font's HUD bitmap (textfont.hud_sheet) as a BetterHud bitmap text font: one sheet of
+    full rows plus the last, shorter row on its own, since every row of a sheet must hold the same
+    number of glyphs."""
+    cw, chh = textfont.HUD_CELL_W * textfont.HUD_OVERSAMPLE, textfont.HUD_CELL_H * textfont.HUD_OVERSAMPLE
+    full = [r for r in rows if len(r) == textfont.HUD_COLUMNS]
     last = rows[len(full):]
     chars = {}
-    body = sheet.crop((0, 0, sheet.width, len(full) * pixelfont.CELL_H))
-    save(body, os.path.join(BH, 'assets', 'craftov', 'pixel', '0.png'))
-    chars['1'] = {'file': 'craftov/pixel/0.png', 'codepoints': full, 'ascent': pixelfont.ASCENT}
+    save(sheet.crop((0, 0, sheet.width, len(full) * chh)), os.path.join(BH, 'assets', 'craftov', 'text', '0.png'))
+    chars['1'] = {'file': 'craftov/text/0.png', 'codepoints': full, 'ascent': textfont.HUD_ASCENT}
     for i, row in enumerate(last, 1):
-        row = row.rstrip('\0')
-        y = (len(full) + i - 1) * pixelfont.CELL_H
-        save(sheet.crop((0, y, len(row) * pixelfont.CELL_W, y + pixelfont.CELL_H)),
-             os.path.join(BH, 'assets', 'craftov', 'pixel', '%d.png' % i))
-        chars[str(i + 1)] = {'file': 'craftov/pixel/%d.png' % i, 'codepoints': [row], 'ascent': pixelfont.ASCENT}
+        y = (len(full) + i - 1) * chh
+        save(sheet.crop((0, y, len(row) * cw, y + chh)), os.path.join(BH, 'assets', 'craftov', 'text', '%d.png' % i))
+        chars[str(i + 1)] = {'file': 'craftov/text/%d.png' % i, 'codepoints': [row], 'ascent': textfont.HUD_ASCENT}
     return {'type': 'bitmap', 'chars': chars}
 
 
@@ -1087,7 +1121,7 @@ def build_betterhud():
     for part in hudart.BODY_PARTS:
         for state in range(len(hudart.BODY_STATES)):
             save(hudart.body_part(part, state), os.path.join(BH, 'assets', 'craftov', 'body', '%s_%d.png' % (part, state)))
-    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'panel_objective', 'alert_band', 'prompt_band', 'hp_empty', 'armor_empty',
+    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'panel_objective', 'panel_alert', 'panel_alert_more', 'prompt_band', 'hp_empty', 'armor_empty',
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
@@ -1113,10 +1147,9 @@ def build_betterhud():
             images['craftov_bp_%s_%d' % (part, state)] = {'type': 'single', 'file': 'craftov/body/%s_%d.png' % (part, state)}
     write_text(os.path.join(BH, 'images', 'craftov.yml'), yaml.safe_dump(images, allow_unicode=True, sort_keys=False))
 
-    # craftov_font: vanilla's ASCII bitmap, used only at scale 1.0 for big digits. BetterHud bundles
-    # unifont glyphs only for the listed languages, so "china" keeps a stray CJK character from being tofu.
-    texts = {'craftov_font': {'merge-default-bitmap': True, 'use-unifont': True, 'include': ['china']},
-             'craftov_pixel': hud_pixel_font()}
+    sheet, rows = textfont.hud_sheet()
+    hud_font_widths(sheet, rows)
+    texts = {'craftov_text': hud_text_font(sheet, rows)}
     write_text(os.path.join(BH, 'texts', 'craftov.yml'), yaml.safe_dump(texts, allow_unicode=True, sort_keys=False))
 
     hp_colour = [(OK_HEX, 0), (ACCENT_HEX, 1), (DANGER_HEX, 2)]
@@ -1127,11 +1160,6 @@ def build_betterhud():
                                + [image('craftov_bp_%s_%d' % (part, state), 3, 2, cond(('craftov_part_' + part, state)))
                                   for part in hudart.BODY_PARTS for state in range(len(hudart.BODY_STATES))]
                                + [image('craftov_hp_empty', 22, 13), image('craftov_hp_bar', 22, 13),
-                                  # Downed players have no stamina to manage, so the bar is hidden; it turns
-                                  # red while overloaded (no sprinting).
-                                  image('craftov_stamina_empty', 22, 18, cond(('craftov_is_downed', 'false'))),
-                                  image('craftov_stamina_bar', 22, 18, cond(('craftov_is_downed', 'false'), ('craftov_overloaded', 'false'))),
-                                  image('craftov_stamina_bar_heavy', 22, 18, cond(('craftov_is_downed', 'false'), ('craftov_overloaded', 'true'))),
                                   image('craftov_armor_empty', 22, 34), image('craftov_helmet_bar', 22, 34),
                                   image('craftov_armor_empty', 56, 34), image('craftov_armor_bar', 56, 34),
                                   # Wound icons, one slot each: bleeding (heavy replaces light), fracture, painkiller.
@@ -1162,6 +1190,15 @@ def build_betterhud():
                                text(c(MUTED) + '[craftov_ammo_type]', 114, 25, align='right', conditions=cond(('craftov_has_hint', 'false'))),
                                text('[craftov_weapon_hint]', 114, 25, align='right', conditions=cond(('craftov_has_hint', 'true')))]),
             'conditions': cond(('craftov_has_gun', 'true')),
+        },
+        # Sprint stamina (#179), just over the hotbar and under the action bar line, where the eye goes
+        # for the item name and the action bar's messages: only while it is not full or the player
+        # sprints (HudService.staminaState), and red while out of breath or overloaded (no sprint).
+        'craftov_stamina': {
+            'images': numbered([image('craftov_stamina_empty', 0, 0),
+                                image('craftov_stamina_bar', 1, 1, cond(('craftov_stamina_state', 1))),
+                                image('craftov_stamina_bar_heavy', 1, 1, cond(('craftov_stamina_state', 2)))]),
+            'conditions': cond(('craftov_stamina_shown', 'true')),
         },
         # Top left, under the raid info: the operator skill and its cooldown.
         'craftov_skill': {
@@ -1202,11 +1239,14 @@ def build_betterhud():
             'conditions': cond(('craftov_in_raid', 'true'), ('craftov_has_objective', 'true'),
                                *(('craftov_has_mate_%d' % i, 'true' if i <= mates else 'false') for i in (1, 2))),
         } for mates in (0, 1, 2)},
-        'craftov_alert': {
-            'images': numbered([image('craftov_alert_band', 0, 0)]),
-            'texts': numbered([text('[craftov_alert]', 150, 1, align='center')]),
-            'conditions': cond(('craftov_has_alert', 'true')),
-        },
+        # The alert banner (HudService#alert, which breaks the text into rows of ALERT_WIDTH px) at the
+        # bottom of the top-left column, one layout per set of rows above it like the objective's.
+        **{'craftov_alert_raid_%d_%s' % (mates, objective): alert_layout(
+            ('craftov_in_raid', 'true'), ('craftov_has_objective', objective),
+            *(('craftov_has_mate_%d' % i, 'true' if i <= mates else 'false') for i in (1, 2)))
+           for mates in (0, 1, 2) for objective in ('false', 'true')},
+        **{'craftov_alert_lobby_%s' % objective: alert_layout(('craftov_in_lobby', 'true'), ('craftov_has_objective', objective))
+           for objective in ('false', 'true')},
         'craftov_prompt': {
             'images': numbered([image('craftov_prompt_band', 0, -1)]),
             'texts': numbered([text('[craftov_prompt]', 100, 0, align='center')]),
@@ -1274,6 +1314,8 @@ def build_betterhud():
     huds = {'craftov_hud': {'layouts': numbered([
         place('craftov_vitals', 0, 100, 2, -40),
         place('craftov_weapon', 100, 100, -120, -40),
+        # The hotbar's top edge (its selected-slot frame) is 23 px over the screen's bottom.
+        place('craftov_stamina', 50, 100, -(STAMINA_W + 2) // 2, -28),
         place('craftov_info', 0, 0, 4, 4),
         place('craftov_skill', 0, 0, 4, 51),
         place('craftov_mate_1', 0, 0, 4, 66),
@@ -1283,7 +1325,10 @@ def build_betterhud():
         # (32 px; Craftov's own effects carry no icon): at the very top a kill's "Monster Hunter" toast
         # hid it. Its last row ends at 100, above the chat on a 240 px high GUI (1280x720 at scale 3).
         *[place('craftov_feed_%d' % i, 100, 0, -6, 40 + 12 * (i - 1)) for i in FEED_LINES],
-        place('craftov_alert', 50, 0, -150, 30),
+        *[place('craftov_alert_raid_%d_%s' % (mates, objective), 0, 0, 4, 66 + 13 * mates + (13 if objective == 'true' else 0))
+          for mates in (0, 1, 2) for objective in ('false', 'true')],
+        *[place('craftov_alert_lobby_%s' % objective, 0, 0, 4, 51 + (13 if objective == 'true' else 0))
+          for objective in ('false', 'true')],
         place('craftov_prompt', 50, 50, -100, 14),
         place('craftov_extract', 50, 50, -60, 26),
         place('craftov_downed', 50, 50, -60, 40),

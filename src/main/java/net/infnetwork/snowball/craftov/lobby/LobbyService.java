@@ -167,7 +167,7 @@ public final class LobbyService implements Listener {
                 d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, s[0]);
             });
             world.spawn(base.clone().add(0, 1.55, 0), TextDisplay.class, d -> {
-                d.text(Text.mm("<b><text>" + s[1] + "</b>\n<muted>" + s[2]));
+                d.text(Text.mm("<heavy><text>" + s[1] + "</heavy>\n<muted>" + s[2]));
                 d.setBillboard(Display.Billboard.CENTER);
                 d.setBrightness(LABEL_LIGHT);
                 d.setPersistent(false);
@@ -197,7 +197,7 @@ public final class LobbyService implements Listener {
             d.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         });
         world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><text>靶场入口</b>\n<muted>右键进入个人独立靶场\n<dim>免费试枪 · 离开时自动归还原装备"));
+            d.text(Text.mm("<heavy><text>靶场入口</heavy>\n<muted>右键进入个人独立靶场\n<dim>免费试枪 · 离开时自动归还原装备"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setBrightness(LABEL_LIGHT);
             d.setPersistent(false);
@@ -236,7 +236,7 @@ public final class LobbyService implements Listener {
         if (leaderboard == null || !leaderboard.isValid()) {
             return;
         }
-        StringBuilder sb = new StringBuilder("<b><accent>排位赛 · 赛季榜</b>\n");
+        StringBuilder sb = new StringBuilder("<heavy><accent>排位赛 · 赛季榜</heavy>\n");
         int i = 1;
         for (ProfileService.Summary s : plugin.profiles().leaderboard((a, b) -> Integer.compare(b.rankPoints(), a.rankPoints()), 10)) {
             sb.append("<muted>").append(i++).append(". <white>").append(Text.escape(s.name())).append(" <muted>")

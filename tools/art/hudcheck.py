@@ -5,6 +5,10 @@ always-on HUD layout must stay on screen and off the hotbar, the offhand slot an
 chat's bottom line sits 40 GUI px above the screen edge). Camera overlays that cover the whole screen
 (hit, blood, suppression) must leave the middle of the screen fully transparent.
 
+The alert banner (#178) closes the top-left column, so it must not cover any panel shown with it on
+any screen shape the client allows (down to 320x240 GUI px, 4:3 and 5:4 included), with all three
+of its rows filled.
+
 Usage: python3 tools/art/hudcheck.py   (after build.py; exit code 1 on any problem)
 """
 import os
@@ -28,8 +32,43 @@ TEXT_BOXES = {
 # Shown in raids all the time (the centre ones come and go with an action and may cover the world).
 ALWAYS = ['craftov_vitals', 'craftov_weapon', 'craftov_skill', 'craftov_info', 'craftov_mate_1',
           'craftov_mate_2', 'craftov_feed_1', 'craftov_feed_2', 'craftov_feed_3', 'craftov_feed_4', 'craftov_feed_5',
-          'craftov_alert', 'craftov_objective', 'craftov_objective_raid_0', 'craftov_objective_raid_1',
-          'craftov_objective_raid_2']
+          'craftov_objective', 'craftov_objective_raid_0', 'craftov_objective_raid_1',
+          'craftov_objective_raid_2', 'craftov_stamina']
+
+
+# Every screen shape the alert check runs on, GUI px: the client's smallest, 4:3, 5:4, 16:10 and the above.
+ALERT_SCREENS = [(320, 240), (400, 300), (427, 240), (480, 270), (512, 384), (320, 256), (640, 400)]
+
+
+def alert_problems(layouts, images, places):
+    """The alert layouts against the panels that show at the same time, on every ALERT_SCREENS size."""
+    problems = []
+    raid_panels = ['craftov_info', 'craftov_skill', 'craftov_vitals', 'craftov_weapon'] + \
+                  ['craftov_feed_%d' % i for i in (1, 2, 3, 4, 5)]
+    groups = {}
+    for mates in (0, 1, 2):
+        for objective in ('false', 'true'):
+            others = raid_panels + ['craftov_mate_%d' % i for i in range(1, mates + 1)]
+            if objective == 'true':
+                others.append('craftov_objective_raid_%d' % mates)
+            groups['craftov_alert_raid_%d_%s' % (mates, objective)] = others
+    for objective in ('false', 'true'):
+        groups['craftov_alert_lobby_%s' % objective] = ['craftov_lobby'] + (['craftov_objective'] if objective == 'true' else [])
+    for w, h in ALERT_SCREENS:
+        def box(name):
+            place = places[name]
+            b = layout_box(name, layouts, images)
+            ox = w * place['gui']['x'] / 100 + place['pixel']['x']
+            oy = h * place['gui']['y'] / 100 + place['pixel']['y']
+            return (ox + b[0], oy + b[1], ox + b[2], oy + b[3])
+        for alert, others in groups.items():
+            a = box(alert)
+            if a[0] < 0 or a[2] > w or a[3] > h:
+                problems.append('%s leaves a %dx%d screen: %s' % (alert, w, h, a))
+            for other in others:
+                if overlaps(a, box(other)):
+                    problems.append('%s covers %s on a %dx%d screen: %s vs %s' % (alert, other, w, h, a, box(other)))
+    return problems
 
 
 def load(name):
@@ -85,6 +124,7 @@ def main():
                 for what, rect in (('hotbar', hotbar), ('offhand slot', offhand), ('chat', chat)):
                     if overlaps(b, rect):
                         problems.append('%s overlaps the %s on %s: %s vs %s' % (name, what, where, b, rect))
+    problems += alert_problems(layouts, images, {p['name']: p for p in huds})
     for overlay in ('hit.png', 'blood_1.png', 'blood_2.png', 'blood_3.png', 'suppressed.png'):
         img = Image.open(os.path.join(MISC, overlay)).convert('RGBA')
         w, h = img.size

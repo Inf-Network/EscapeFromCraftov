@@ -274,7 +274,7 @@ public final class RangeService implements Listener {
             d.setPersistent(false);
         }));
         spawned.add(world.spawn(rack.clone().add(0, 2.1, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><text>靶场武器架</b>\n<muted>免费试用 · 子弹无限 · 可装瞄准镜"));
+            d.text(Text.mm("<heavy><text>靶场武器架</heavy>\n<muted>免费试用 · 子弹无限 · 可装瞄准镜"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setBrightness(LobbyService.LABEL_LIGHT);
             d.setPersistent(false);
@@ -327,7 +327,7 @@ public final class RangeService implements Listener {
         // above it, the label hung at the height of the 7 m dummy's name tag, which is wide that close
         // and covered it, and the top of the window cut its title; centred, the dummy's body hid its end.
         spawned.add(world.spawn(at.clone().add(-2.0, -CALIBRATION_SIZE / 2 - 1.6, 0), TextDisplay.class, d -> {
-            d.text(Text.mm("<b><text>50 m 校准靶</b>\n<muted>4 倍镜粗线碰到外圈 · 刻度 5 mil"));
+            d.text(Text.mm("<heavy><text>50 m 校准靶</heavy>\n<muted>4 倍镜粗线碰到外圈 · 刻度 5 mil"));
             d.setBillboard(Display.Billboard.CENTER);
             d.setTransformation(new org.bukkit.util.Transformation(new org.joml.Vector3f(), new org.joml.Quaternionf(),
                     new org.joml.Vector3f(3f, 3f, 3f), new org.joml.Quaternionf()));

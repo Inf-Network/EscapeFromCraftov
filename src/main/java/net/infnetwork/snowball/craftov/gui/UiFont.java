@@ -15,9 +15,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The craftov:ui font (tools/art/build.py, build_screens): menu titles in the 10 px pixel font, which
- * stays sharp at every GUI scale, and the designed screen backgrounds, each one glyph that the title
- * draws behind the window.
+ * The craftov:ui font (tools/art/build.py, build_screens): the designed screen backgrounds, each one
+ * glyph that the title draws behind the window, and the shift characters; the title text itself is the
+ * game's font, the rounded text font (#182).
  * <p>
  * A container title starts 8 px right of the window's left edge. A designed title moves the pen back
  * to the edge (shift characters), draws the background glyph, moves forward to where the title text
@@ -89,7 +89,7 @@ public final class UiFont {
     }
 
     /**
-     * A container title: the screen's background (if it has one) and the text in the pixel font. The
+     * A container title: the screen's background (if it has one) and the text in the text font. The
      * text keeps its own colours; uncoloured parts are drawn in the primary text colour.
      */
     public static Component title(@Nullable String screen, Component text) {

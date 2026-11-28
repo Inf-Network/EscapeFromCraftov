@@ -16,9 +16,12 @@ craftov_panel_skill:
 craftov_panel_objective:
   type: single
   file: craftov/panel_objective.png
-craftov_alert_band:
+craftov_panel_alert:
   type: single
-  file: craftov/alert_band.png
+  file: craftov/panel_alert.png
+craftov_panel_alert_more:
+  type: single
+  file: craftov/panel_alert_more.png
 craftov_prompt_band:
   type: single
   file: craftov/prompt_band.png

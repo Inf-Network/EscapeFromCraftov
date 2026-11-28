@@ -211,9 +211,9 @@ public final class RangeTargets {
             p.boards.add(board(world, plot, dx + at[0] + 0.5, floor, at[1] + 0.5, RangeBuilder.RAIL_Z - at[1], spawned));
         }
         String[] signs = {
-                "<b><text>人物靶</b>\n<muted>4 / 7 / 11 m · 打倒后 " + trim(downTicks() / 20.0) + " 秒升起",
-                "<b><text>标靶</b>\n<muted>10 / 25 m · 环数与命中率",
-                "<b><text>移动靶</b>\n<muted>10 m 慢速 · 20 m 中速 · 30 m 快速"};
+                "<heavy><text>人物靶</heavy>\n<muted>4 / 7 / 11 m · 打倒后 " + trim(downTicks() / 20.0) + " 秒升起",
+                "<heavy><text>标靶</heavy>\n<muted>10 / 25 m · 环数与命中率",
+                "<heavy><text>移动靶</heavy>\n<muted>10 m 慢速 · 20 m 中速 · 30 m 快速"};
         for (int i = 0; i < signs.length; i++) {
             String text = signs[i];
             // Over the lane, above the line of sight down it.
@@ -669,7 +669,7 @@ public final class RangeTargets {
     // ------------------------------------------------------------------ labels
 
     private void relabel(Silhouette s) {
-        StringBuilder sb = new StringBuilder("<b><text>").append(s.name).append("</b>\n");
+        StringBuilder sb = new StringBuilder("<heavy><text>").append(s.name).append("</heavy>\n");
         if (s.state == State.STANDING) {
             double share = s.hp / maxHp();
             String color = share > 0.6 ? "ok" : share > 0.3 ? "accent" : "danger";
@@ -693,7 +693,7 @@ public final class RangeTargets {
 
     private void retally(Board b) {
         String avg = b.hits == 0 ? "-" : String.format("%.1f", b.rings / (double) b.hits);
-        b.tally.text(Text.mm("<b><text>" + b.name + "</b>\n<muted>命中 <white>" + b.hits + "/" + b.shots + " <muted>("
+        b.tally.text(Text.mm("<heavy><text>" + b.name + "</heavy>\n<muted>命中 <white>" + b.hits + "/" + b.shots + " <muted>("
                 + percent(b) + ") · 平均 <white>" + avg + " <muted>环\n<muted>上一发 " + lastShot(b)));
     }
 

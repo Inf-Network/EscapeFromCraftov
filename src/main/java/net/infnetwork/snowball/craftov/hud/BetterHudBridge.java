@@ -83,6 +83,8 @@ public final class BetterHudBridge implements BetterHudHook {
             number(pm, "craftov_part_" + part.key(), s -> s.part(part));
         }
         number(pm, "craftov_stamina", HudSnapshot::stamina);
+        number(pm, "craftov_stamina_state", s -> s.extra().staminaState());
+        bool(pm, "craftov_stamina_shown", s -> s.extra().staminaState() != 0);
         bool(pm, "craftov_using_med", HudSnapshot::usingMed);
         string(pm, "craftov_med_name", HudSnapshot::medName);
         string(pm, "craftov_med_left", HudSnapshot::medLeft);
@@ -110,6 +112,11 @@ public final class BetterHudBridge implements BetterHudHook {
         }
         string(pm, "craftov_alert", s -> s.extra().alert());
         bool(pm, "craftov_has_alert", s -> !s.extra().alert().isEmpty());
+        for (int i = 0; i < HudService.ALERT_LINES; i++) {
+            int index = i;
+            string(pm, "craftov_alert_" + (i + 1), s -> s.extra().alertLine(index));
+            bool(pm, "craftov_has_alert_" + (i + 1), s -> !s.extra().alertLine(index).isEmpty());
+        }
         string(pm, "craftov_prompt", s -> s.extra().prompt());
         bool(pm, "craftov_has_prompt", s -> !s.extra().prompt().isEmpty());
         string(pm, "craftov_objective", s -> s.extra().objective());

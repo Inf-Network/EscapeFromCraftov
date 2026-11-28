@@ -68,11 +68,17 @@ import pixelfont  # noqa: E402
 FONTS = os.path.join(HERE, 'fonts', 'jiangcheng')
 CACHE = os.path.join(HERE, '.cache')
 OUT = os.path.join(FONTS, 'text.ttf')
+BOLD_OUT = os.path.join(FONTS, 'bold.ttf')
 
 WEIGHT = '500W'
 PACKAGE = ('https://registry.npmjs.org/@fontpkg/jiang-cheng-yuan-ti/-/jiang-cheng-yuan-ti-3.6.0.tgz',
            'sha512-TTzSoKRg3V/ReEJV8NGQrcOLHlp5dts05Tj6nHE88d0KgkBuEAkBSMZckQP7tzKc0W0QWZBDLh3r17xdpzFu6w==')
 MEMBER = ('package/江城圆体 %s.ttf' % WEIGHT, '8e7cc1282823e4d94b416f7ca16a35712d3e2f13c3e240243967ae665b77ec4e')
+# The heavy face for the world's name labels (#181), craftov:bold: the client's bold draws a glyph twice
+# 1 GUI px apart, wider than 500W's 0.85 px strokes, so a label's bold title came out as two thin
+# copies with a dark seam between them. 700W's own strokes are bold without a second copy.
+BOLD_WEIGHT = '700W'
+BOLD_MEMBER = ('package/江城圆体 %s.ttf' % BOLD_WEIGHT, 'f096f0f3dcb27194578d604c123e305b4cf1030e852887a852d283a03cc2f422')
 # GenSen Rounded's licence file: Adobe's notice and the OFL text, as every step of the lineage has it.
 LICENSE = ('https://raw.githubusercontent.com/ButTaiwan/gensen-font/'
            '1a2d61e1ea08d7948b86dd77262ae2e5585fa1d5/SIL_Open_Font_License_1.1.txt',
@@ -106,9 +112,9 @@ def download(url, what):
         raise SystemExit('could not fetch %s (%s): %s' % (what, url, e))
 
 
-def source_font(path=None):
+def source_font(path=None, member=MEMBER):
     """The pinned source font: the given file, or the member of the cached (or fetched) npm package."""
-    name, sha256 = MEMBER
+    name, sha256 = member
     if path:
         data = open(path, 'rb').read()
     else:
@@ -177,12 +183,12 @@ def wanted():
     return sorted(ch for ch in chars if ord(ch) not in VANILLA)
 
 
-def bake(path=None):
+def subset_font(data, chars):
+    """The face cut down to `chars` with the client's advances (see the module notes): (bytes, kept)."""
     from fontTools import subset
     from fontTools.ttLib import TTFont, newTable
     from fontTools.ttLib.tables import ttProgram
 
-    data = source_font(path)
     # The source's own timestamp is kept, so the same source always bakes the same bytes.
     font = TTFont(io.BytesIO(data), recalcTimestamp=False)
     cmap = font.getBestCmap()
@@ -192,7 +198,6 @@ def bake(path=None):
             for code in FULL_WIDTH:
                 if table.cmap.get(code) in full:
                     table.cmap[code] = full[table.cmap[code]]
-    chars = wanted()
     kept = [ch for ch in chars if ord(ch) in cmap]
     opts = subset.Options()
     opts.layout_features = []   # the client applies no OpenType layout
@@ -234,23 +239,40 @@ def bake(path=None):
     prep.program = ttProgram.Program()
     prep.program.fromAssembly(['SVTCA[0]'])
     font['prep'] = prep
-
-    os.makedirs(FONTS, exist_ok=True)
     out = io.BytesIO()
     font.save(out)
+    return out.getvalue(), kept
+
+
+def bold_chars():
+    """The label face only needs what the plugin itself writes in labels, plus ASCII: anything else
+    falls through to the text font."""
+    return sorted(set(chr(c) for c in range(0x21, 0x7F)) | pixelfont.source_chars() | {' '})
+
+
+def bake(path=None):
+    chars = wanted()
+    data, kept = subset_font(source_font(path), chars)
+    bold, bold_kept = subset_font(source_font(member=BOLD_MEMBER), [ch for ch in bold_chars() if ord(ch) not in VANILLA])
+    os.makedirs(FONTS, exist_ok=True)
     with open(OUT, 'wb') as f:
-        f.write(out.getvalue())
+        f.write(data)
+    with open(BOLD_OUT, 'wb') as f:
+        f.write(bold)
     with open(os.path.join(FONTS, 'OFL.txt'), 'w', encoding='utf-8') as f:
         f.write(licence())
-    lacking = ''.join(ch for ch in chars if ord(ch) not in cmap and ord(ch) not in range(0xA0, 0x500))
+    kept_set = set(kept)
+    lacking = ''.join(ch for ch in chars if ch not in kept_set and ord(ch) not in range(0xA0, 0x500))
     with open(os.path.join(FONTS, 'SOURCE.txt'), 'w', encoding='utf-8') as f:
         f.write(PROVENANCE % {
             'weight': WEIGHT, 'package': PACKAGE[0], 'integrity': PACKAGE[1], 'member': MEMBER[0],
             'member_sha': MEMBER[1], 'license': LICENSE[0], 'license_sha': LICENSE[1], 'chars': len(kept),
             'digit': DIGIT_ADVANCE, 'space': SPACE_ADVANCE,
-            'out_sha': hashlib.sha256(out.getvalue()).hexdigest(), 'lacking': lacking})
-    print('baked %d characters into %s (%d bytes); not in the face: %s'
-          % (len(kept), OUT, len(out.getvalue()), lacking))
+            'out_sha': hashlib.sha256(data).hexdigest(), 'bold_weight': BOLD_WEIGHT, 'bold_member': BOLD_MEMBER[0],
+            'bold_member_sha': BOLD_MEMBER[1], 'bold_chars': len(bold_kept),
+            'bold_sha': hashlib.sha256(bold).hexdigest(), 'lacking': lacking})
+    print('baked %d characters into %s (%d bytes) and %d into %s (%d bytes); not in the face: %s'
+          % (len(kept), OUT, len(data), len(bold_kept), BOLD_OUT, len(bold), lacking))
 
 
 def lacking():
@@ -291,13 +313,19 @@ elements, box drawing and `|`), Chinese punctuation and kana mapped to their ful
 forms, every ideograph advancing exactly one em, no OpenType layout tables, tabular digits at
 %(digit)d units, the space at %(space)d units and a one-instruction prep program.
 sha256 %(out_sha)s
+
+bold.ttf, the world labels' heavy face, is the %(bold_weight)s weight cut the same way to the %(bold_chars)d
+characters the plugin's own text uses plus ASCII:
+  %(bold_member)s, sha256 %(bold_member_sha)s (same package)
+sha256 %(bold_sha)s
 ''' + LACKING + '%(lacking)s\n'
 
 
-def provider():
-    """The client's TrueType provider for the baked font (installed as craftov:font/text.ttf). Like
-    vanilla's ASCII bitmaps it is off while the player has Force Unicode Font on."""
-    return {'type': 'ttf', 'file': 'craftov:text.ttf', 'size': SIZE, 'oversample': OVERSAMPLE,
+def provider(file='craftov:text.ttf'):
+    """The client's TrueType provider for a baked font (installed as craftov:font/text.ttf, and the
+    labels' craftov:font/bold.ttf). Like vanilla's ASCII bitmaps it is off while the player has Force
+    Unicode Font on."""
+    return {'type': 'ttf', 'file': file, 'size': SIZE, 'oversample': OVERSAMPLE,
             'shift': [0, round(SHIFT, 4)], 'skip': '', 'filter': {'uniform': False}}
 
 

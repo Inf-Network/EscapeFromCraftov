@@ -126,4 +126,9 @@ elements, box drawing and `|`), Chinese punctuation and kana mapped to their ful
 forms, every ideograph advancing exactly one em, no OpenType layout tables, tabular digits at
 667 units, the space at 444 units and a one-instruction prep program.
 sha256 0dfc665a179e1846de3501e73b5d3c77f3ed2e3a6d9194984b39bfaec9713e4e
+
+bold.ttf, the world labels' heavy face, is the 700W weight cut the same way to the 1200
+characters the plugin's own text uses plus ASCII:
+  package/江城圆体 700W.ttf, sha256 f096f0f3dcb27194578d604c123e305b4cf1030e852887a852d283a03cc2f422 (same package)
+sha256 d312eb716b911b757b0d65c1b24920c9477ff95628c467930ab5393869cf1968
 Not in the face (drawn by the game's own fonts): ⏱▮▯☠☢♛⚑⚡⛑✈✔✕✖✗✘✦❤

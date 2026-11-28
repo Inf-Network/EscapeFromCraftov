@@ -838,6 +838,11 @@ def build_fonts():
         licence = f.read()
     write_text(os.path.join(CV, 'font', 'text.license.txt'), licence + '\n' + source)
     write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
+    # craftov:bold (Style's <heavy>): the world labels' titles in the 700W face, and anything it lacks
+    # in the text font. The client's bold doubled the 500W strokes 1 GUI px apart into two copies (#181).
+    shutil.copyfile(textfont.BOLD_OUT, os.path.join(CV, 'font', 'bold.ttf'))
+    write_json(os.path.join(CV, 'font', 'bold.json'), {'providers': [textfont.provider('craftov:bold.ttf'),
+                                                                     {'type': 'reference', 'id': 'minecraft:default'}]})
     # A character the plugin prints that the subset lacks is drawn by vanilla's fonts. The face lacks
     # a few (textfont.lacking()); anything else is new text since the last bake.
     from fontTools.ttLib import TTFont

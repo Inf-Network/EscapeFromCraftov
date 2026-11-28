@@ -277,7 +277,7 @@ public final class OperatorService {
         for (LivingEntity entity : found) {
             marked++;
             TextDisplay marker = entity.getWorld().spawn(entity.getLocation().add(0, entity.getHeight() + 0.6, 0), TextDisplay.class, d -> {
-                d.text(Text.mm("<danger><b>◆</b>"));
+                d.text(Text.mm("<danger><heavy>◆</heavy>"));
                 d.setBillboard(Display.Billboard.CENTER);
                 d.setSeeThrough(true);
                 d.setPersistent(false);

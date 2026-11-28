@@ -554,7 +554,7 @@ public final class DamageService implements Listener {
                 (ThreadLocalRandom.current().nextDouble() - 0.5) * 0.6);
         String color = zone == HitZone.HEAD ? "danger" : "white";
         TextDisplay text = victim.getWorld().spawn(at, TextDisplay.class, d -> {
-            d.text(net.infnetwork.snowball.craftov.util.Text.mm("<" + color + "><b>" + Math.round(damage)));
+            d.text(net.infnetwork.snowball.craftov.util.Text.mm("<" + color + "><heavy>" + Math.round(damage)));
             d.setBillboard(Display.Billboard.CENTER);
             d.setSeeThrough(true);
             d.setShadowed(true);

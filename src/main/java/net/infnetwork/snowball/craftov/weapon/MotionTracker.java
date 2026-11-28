@@ -33,7 +33,9 @@ import java.util.UUID;
  * ground than vanilla physics allows from the speed the player had (see {@link #reach}), and the
  * player is judged carefully for a few seconds (see {@link #HELD_TICKS}). A client that sends no tick
  * ends (a bot, or a modified client that drops them) is measured per server tick as before, and
- * checked the same way, loosened by the ticks its packets may have been bunched over.
+ * checked the same way, loosened by the ticks its packets may have been bunched over; so is one that
+ * moves without the tick end a vanilla client sends right behind every move, from the next server
+ * tick on, until its tick ends come back (issue #171: it could freeze its reading while it ran).
  */
 final class MotionTracker {
 
@@ -80,7 +82,10 @@ final class MotionTracker {
      * walk stays above it, and so does slowing down to the pace of aiming.
      */
     private static final double STOP_RATIO = 0.85;
-    /** Server ticks without a tick end after which the client counts as one that sends none. */
+    /**
+     * Server ticks without a tick end after which a client that has not moved counts as one that sends
+     * none. One that moves counts at once: a vanilla client sends a tick end right behind every move.
+     */
     private static final int CLOCK_TIMEOUT = 40;
     /** What a tick on normal ground keeps of the player's speed (block friction 0.6 times 0.91). */
     private static final double GROUND_FRICTION = 0.546;
@@ -152,7 +157,16 @@ final class MotionTracker {
         double heldSpeed;
         /** The server tick the last tick end came in. */
         long lastEnd = Long.MIN_VALUE / 2;
-        /** A client without tick ends: server ticks in a row that brought no movement. */
+        /**
+         * Measured per server tick: the client sends no tick ends, or moved without one after it (see
+         * {@link #sample}), until its next tick end.
+         */
+        boolean clockless;
+        /** Where the server had the player when the track last took a position (to see movement no tick end came for). */
+        double seenX;
+        double seenY;
+        double seenZ;
+        /** Measured per server tick: server ticks in a row that brought no movement. */
         int quiet;
         /** The last tick's step, as checked against the physics, and whether it started and ended on the ground. */
         double lastStep;
@@ -202,6 +216,19 @@ final class MotionTracker {
         track.lastStartGround = track.lastEndGround = grounded(player);
         track.unchecked = RESET_TICKS;
         track.quiet = 0;
+        seen(track, player.getLocation());
+    }
+
+    /** Notes where the server has the player now that the track took a position. */
+    private static void seen(Track track, Location server) {
+        track.seenX = server.getX();
+        track.seenY = server.getY();
+        track.seenZ = server.getZ();
+    }
+
+    /** True when {@code at} is not where the track last took a position. */
+    private static boolean away(Track track, Location at) {
+        return at.getX() != track.x || at.getY() != track.y || at.getZ() != track.z;
     }
 
     /** True when the track has nothing to measure from: then it starts again here. */
@@ -237,7 +264,8 @@ final class MotionTracker {
     void tickEnded(Player player) {
         Track track = tracks.computeIfAbsent(player.getUniqueId(), id -> new Track());
         track.lastEnd = Bukkit.getCurrentTick();
-        Location at = player.getLocation();
+        Location server = player.getLocation();
+        Location at = server.clone();
         if (track.claimSet) {
             at.set(track.claimX, track.claimY, track.claimZ);
             track.claimSet = false;
@@ -246,6 +274,19 @@ final class MotionTracker {
         }
         track.awaitTicks = 0;
         if (restarted(track, player, at)) {
+            track.clockless = false;
+            return;
+        }
+        if (track.clockless) {
+            // Back on the client's clock. Movement since the last server tick measured is checked as
+            // those were; none is no news: that tick end belongs to movement already measured.
+            track.clockless = false;
+            if (away(track, at)) {
+                double moved = step(track, at, 1);
+                track.caughtSince = Math.max(track.caughtSince, check(player, track, moved, 1, track.quiet + 2));
+            }
+            track.quiet = 0;
+            seen(track, server);
             return;
         }
         // The sprint it may have started this very tick (its command comes before the movement).
@@ -253,6 +294,7 @@ final class MotionTracker {
         double moved = step(track, at, 1);
         double caught = check(player, track, moved, 1, 1);
         track.caughtSince = Math.max(track.caughtSince, caught);
+        seen(track, server);
     }
 
     /**
@@ -297,11 +339,24 @@ final class MotionTracker {
         if (restarted(track, player, at)) {
             return 0;
         }
-        if (Bukkit.getCurrentTick() - track.lastEnd > CLOCK_TIMEOUT) {
-            // No tick ends from this client: one step per server tick, as ever. The physics may spend
-            // on movement that arrives the ticks since the last that brought some (it may have been
-            // held back, or bunched up) and one more (two packets in one server tick).
-            boolean arrived = at.getX() != track.x || at.getY() != track.y || at.getZ() != track.z;
+        long now = Bukkit.getCurrentTick();
+        if (!track.clockless && (at.getX() != track.seenX || at.getY() != track.seenY || at.getZ() != track.seenZ
+                || now - track.lastEnd > CLOCK_TIMEOUT)) {
+            // The player moved and no tick end came after it (or none has for 2 s): a client that stops
+            // sending them would freeze its reading while it runs (issue #171). Measured per server
+            // tick from here, starting with the movement since its last tick end, which may have taken
+            // the server ticks since that end and one more (two packets in one server tick).
+            track.clockless = true;
+            track.quiet = (int) Math.max(0, Math.min(MAX_REACH, now - track.lastEnd) - 1);
+        }
+        if (track.clockless) {
+            // One step per server tick. The physics may spend on movement that arrives the ticks since
+            // the last that brought some (it may have been held back, or bunched up) and one more.
+            if (track.claimSet) {
+                at.set(track.claimX, track.claimY, track.claimZ);
+                track.claimSet = false;
+            }
+            boolean arrived = away(track, at);
             double moved = step(track, at, 1);
             if (arrived) {
                 track.caughtSince = Math.max(track.caughtSince, check(player, track, moved, 1, track.quiet + 2));
@@ -309,6 +364,7 @@ final class MotionTracker {
             } else {
                 track.quiet = Math.min(MAX_REACH, track.quiet + 1);
             }
+            seen(track, player.getLocation());
         }
         double caught = track.caughtSince;
         track.caughtSince = 0;
@@ -498,6 +554,7 @@ final class MotionTracker {
             track.z = at.getZ();
             track.claimSet = false;
             track.awaitTicks = settleTicks(player);
+            seen(track, at);
         }
     }
 

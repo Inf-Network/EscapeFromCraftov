@@ -109,6 +109,13 @@ public final class CarryListener implements Listener {
             handleContainerSlot(player, slot, event);
             return;
         }
+        if ((event.getClick() == ClickType.DROP || event.getClick() == ClickType.CONTROL_DROP) && !mayDrop(player)) {
+            // Vanilla takes the item out before the drop is refused and then hands it back with
+            // addItem, into the first free cell: Q on a worn vest in the lobby moved it to gun key 1.
+            event.setCancelled(true);
+            Notify.error(player, dropRefusal(player, "物品"));
+            return;
+        }
         if (ownScreen && event.isShiftClick() && (slot == CarryService.HEAD || slot == CarryService.CHEST)) {
             // Taking the helmet or vest off goes into the backpack, not the first free cell vanilla picks.
             event.setCancelled(true);
@@ -287,11 +294,8 @@ public final class CarryListener implements Listener {
      * say; if one of them refuses, the container goes straight back on.
      */
     private void dropWorn(Player player, int slot) {
-        RaidPlayer rp = plugin.raids().session(player);
-        if (rp == null || rp.state != RaidPlayer.State.ALIVE) {
-            String what = (slot == CarryService.LEGS ? Category.RIG : Category.BACKPACK).displayName();
-            Notify.error(player, rp == null ? "只有在对局中才能丢弃" + what
-                    : rp.state == RaidPlayer.State.DOWNED ? "倒地时不能丢弃" + what : "现在不能丢弃" + what);
+        if (!mayDrop(player)) {
+            Notify.error(player, dropRefusal(player, (slot == CarryService.LEGS ? Category.RIG : Category.BACKPACK).displayName()));
             return;
         }
         ItemStack removed = carry.unequip(player, slot);
@@ -306,6 +310,13 @@ public final class CarryListener implements Listener {
             dropped.remove();
             carry.equip(player, removed);
         }
+    }
+
+    /** Why the player may not throw {@code what} now (see {@link #mayDrop}). */
+    private String dropRefusal(Player player, String what) {
+        RaidPlayer rp = plugin.raids().session(player);
+        return rp == null ? "只有在对局中才能丢弃" + what
+                : rp.state == RaidPlayer.State.DOWNED ? "倒地时不能丢弃" + what : "现在不能丢弃" + what;
     }
 
     /** Throwing an item is allowed only for a raider who is up; the lobby, the range and the raid refuse it otherwise. */

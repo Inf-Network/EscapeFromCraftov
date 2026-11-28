@@ -998,7 +998,7 @@ public final class WeaponService implements Listener {
             if (reserve(player, state) > 0) {
                 startReload(player, state, false);
             } else {
-                hint(player, "<danger>没有 " + gun.caliber() + " 弹药 <muted>· 去商人买或在物资箱里找");
+                hint(player, "<danger>" + noAmmo(player, state));
             }
             return false;
         }
@@ -1619,6 +1619,20 @@ public final class WeaponService implements Listener {
         return out;
     }
 
+    /**
+     * Why the gun has nothing to load. Rounds of its calibre that are the other kind (armory rounds
+     * for an own gun, or the other way round) are named: the empty-trigger hint used to say there
+     * were none at all, so a crate's gun with armory rounds in the pockets read as a reload bug (#180).
+     */
+    private String noAmmo(Player player, GunState state) {
+        String none = "没有 " + state.gun.caliber() + " 口径的弹药";
+        if (ammoTypesCarried(player, state.gun, !state.test).isEmpty()) {
+            return none + " <muted>· 去商人买或在物资箱里找";
+        }
+        return none + (state.test ? " <muted>· 试验场武器只能用试验场弹药（军械库的子弹）"
+                : " <muted>· 身上的是试验场弹药，只能装进军械库的枪");
+    }
+
     /** Reserve shown (and never used up) on the shooting range. */
     public static final int RANGE_RESERVE = 999;
 
@@ -1637,9 +1651,7 @@ public final class WeaponService implements Listener {
             }
         }
         if (types.isEmpty()) {
-            boolean otherKind = !ammoTypesCarried(player, gun, !state.test).isEmpty();
-            Notify.error(player, "没有 " + gun.caliber() + " 口径的弹药" + (!otherKind ? ""
-                    : state.test ? " <muted>· 试验场武器只能用试验场弹药" : " <muted>· 试验场弹药只能装进试验场武器"));
+            Notify.error(player, noAmmo(player, state));
             return;
         }
         String type;

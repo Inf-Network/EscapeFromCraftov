@@ -100,12 +100,13 @@ final class MotionTracker {
     /** Blocks a tick allowed for each other body the player stands in: the client pushes itself out of them. */
     private static final double CROWD_MARGIN = 0.05;
     /**
-     * Server ticks nothing is checked after a teleport, a respawn or a change of world: the speed carried
-     * over is not known, and the server drops the movement the client sent before it took the teleport in.
+     * The speed (blocks a tick) a tick is checked from where the one before is not known: after a
+     * teleport, a respawn or a change of world, and after a tick in water or lava, on a ladder, on ice,
+     * riding or gliding, whose physics differ. About a sprint-jump's, carried as from the air, which
+     * keeps the most of it: vanilla friction brings the bound down to the player's real speed within a
+     * few ticks, with no ticks left unchecked to hold movement back in (issue #171).
      */
-    private static final int RESET_TICKS = 20;
-    /** Server ticks nothing is checked after water, lava, a ladder, ice, a vehicle or a glide, whose physics differ. */
-    private static final int EXEMPT_TICKS = 20;
+    private static final double CARRIED = 0.6;
     /** Server ticks a push from the server (a blast, a punch) may take to reach the client and be moved by. */
     private static final int PUSH_TICKS = 40;
     /** Client ticks of physics checked at most at once (a long stall's worth). */
@@ -175,8 +176,6 @@ final class MotionTracker {
         double lastStep;
         boolean lastStartGround = true;
         boolean lastEndGround = true;
-        /** Server ticks left in which no step is checked against the physics. */
-        int unchecked;
         /**
          * Server ticks left after a refused move in which a tick end is no news until the client's next
          * accepted move (see {@link #setBack}).
@@ -215,9 +214,12 @@ final class MotionTracker {
         track.x = at.getX();
         track.y = at.getY();
         track.z = at.getZ();
-        track.lastStep = 0;
-        track.lastStartGround = track.lastEndGround = grounded(player);
-        track.unchecked = RESET_TICKS;
+        track.lastStep = CARRIED;
+        track.lastStartGround = false;
+        track.lastEndGround = grounded(player);
+        // The server drops what the client sends until it has taken the teleport in: its tick ends
+        // till then are no news, and the first move after starts from the speed carried.
+        track.awaitTicks = settleTicks(player);
         track.quiet = 0;
         seen(track, player.getLocation());
     }
@@ -333,9 +335,6 @@ final class MotionTracker {
         if (track.pushTicks > 0) {
             track.pushTicks--;
         }
-        if (track.unchecked > 0) {
-            track.unchecked--;
-        }
         if (track.awaitTicks > 0) {
             track.awaitTicks--;
         }
@@ -411,13 +410,18 @@ final class MotionTracker {
     private double check(Player player, Track track, double moved, int ticks, int reach) {
         boolean ground = grounded(player);
         if (exempt(player)) {
-            track.unchecked = Math.max(track.unchecked, EXEMPT_TICKS);
+            // Not vanilla ground physics: not checked, and the next tick starts from a speed it cannot
+            // have beaten, from the air (whose friction keeps the most, more than ice's).
+            track.lastStep = Math.max(CARRIED, moved);
+            track.lastStartGround = false;
+            track.lastEndGround = ground;
+            return 0;
         }
         int n = Math.min(MAX_REACH, reach);
         double[] most = reach(n, track.lastStep, track.lastStartGround, track.lastEndGround, ground,
                 track.pace / BLOCKS_PER_SPEED, track.pushTicks > 0 ? track.push : 0);
         double caught = 0;
-        if (track.unchecked <= 0 && moved > most[0] + n * STEP_MARGIN && moved > most[0] + n * (STEP_MARGIN + crowd(player))) {
+        if (moved > most[0] + n * STEP_MARGIN && moved > most[0] + n * (STEP_MARGIN + crowd(player))) {
             caught = moved - most[0];
             if (track.heldTicks <= 0) {
                 track.heldSpeed = 0;
@@ -503,7 +507,8 @@ final class MotionTracker {
 
     /**
      * Where the physics above does not hold: in water or lava, on a ladder, gliding or riding, flying,
-     * on ice or slime, in powder snow. The check rests for {@link #EXEMPT_TICKS} after.
+     * on ice or slime, in powder snow. Such a tick is not checked, and the next is checked from
+     * {@link #CARRIED}.
      */
     private static boolean exempt(Player player) {
         if (player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isRiptiding() || player.isSwimming()

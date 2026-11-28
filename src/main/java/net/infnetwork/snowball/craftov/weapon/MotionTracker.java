@@ -244,7 +244,11 @@ final class MotionTracker {
 
     /** True when the track has nothing to measure from: then it starts again here. */
     private static boolean restarted(Track track, Player player, Location at) {
-        if (track.fresh || !at.getWorld().getUID().equals(track.world)) {
+        boolean elsewhere = !at.getWorld().getUID().equals(track.world);
+        if (track.fresh || elsewhere) {
+            if (elsewhere) {
+                endCareful(track); // a raid's careful spell does not follow the player out of it
+            }
             restart(track, player, at);
             return true;
         }
@@ -800,6 +804,21 @@ final class MotionTracker {
             track.fresh = true;
             track.claimSet = false;
         }
+    }
+
+    /** Respawned: a fresh track, and judged carefully no more (see {@link #HELD_TICKS}). */
+    void respawned(Player player) {
+        reset(player);
+        Track track = tracks.get(player.getUniqueId());
+        if (track != null) {
+            endCareful(track);
+        }
+    }
+
+    private static void endCareful(Track track) {
+        track.heldTicks = 0;
+        track.heldSpeed = 0;
+        track.careful = false;
     }
 
     void forget(UUID player) {

@@ -2344,7 +2344,7 @@ public final class WeaponService implements Listener {
     /** Nor is respawning, which fires no teleport event even within the same world. */
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
-        motion.reset(event.getPlayer());
+        motion.respawned(event.getPlayer());
     }
 
     /** The client's clock, which movement is measured by (see {@link MotionTracker}). */

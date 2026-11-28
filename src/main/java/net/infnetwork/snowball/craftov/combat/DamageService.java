@@ -661,6 +661,20 @@ public final class DamageService implements Listener {
                 Math.max(box.getMinZ(), Math.min(box.getMaxZ(), along.getZ())));
     }
 
+    /** A knife swung at raid glass breaks it, as a round does. */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onKnifeGlass(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.LEFT_CLICK_BLOCK || event.getClickedBlock() == null
+                || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) {
+            return;
+        }
+        Player player = event.getPlayer();
+        ItemDef def = plugin.items().defOf(player.getInventory().getItemInMainHand());
+        if (def != null && def.isMelee() && plugin.raids().canAttack(player)) {
+            plugin.weapons().ballistics().breakGlass(event.getClickedBlock());
+        }
+    }
+
     /** Guns and tactical items are not melee weapons; punches do token damage only. */
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onMelee(EntityDamageByEntityEvent event) {

@@ -497,6 +497,11 @@ public final class GunAudio {
             victim.getWorld().playSound(at, "craftov:impact.metal", SoundCategory.PLAYERS, 1f, pitch * 1.2f);
             return;
         }
+        String target = plugin.range().targets().impactSound(victim);
+        if (target != null) {
+            victim.getWorld().playSound(at, target, SoundCategory.PLAYERS, 1f, pitch);
+            return;
+        }
         if (armored) {
             victim.getWorld().playSound(at, head ? "craftov:impact.helmet" : "craftov:impact.armor", SoundCategory.PLAYERS,
                     1f, penetrated ? pitch * 0.92f : pitch);

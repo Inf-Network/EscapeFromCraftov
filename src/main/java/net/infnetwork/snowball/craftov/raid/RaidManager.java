@@ -40,7 +40,6 @@ import org.bukkit.block.data.Openable;
 import org.bukkit.block.data.Powerable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mannequin;
 import org.bukkit.entity.Player;
@@ -259,14 +258,15 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Players, the stand-ins of disconnected players, soldiers, drones and range dummies: the only
-     * living things that take hits in a raid or on the range. Anything else alive there is scenery
+     * Players, the stand-ins of disconnected players, soldiers, drones and range targets (not a range
+     * silhouette while it is down): the only living things that take hits in a raid or on the
+     * range. Anything else alive there is scenery
      * (corpses, kill-replay stand-ins, whatever decoration comes next), so a shot passes through it
      * instead of stopping in mid-air with a hit marker.
      */
     public boolean isCombatant(LivingEntity entity) {
         return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
-                || plugin.lobby().isTarget(entity) || standInOwner(entity) != null;
+                || plugin.lobby().isTarget(entity) && !plugin.range().targets().isDown(entity) || standInOwner(entity) != null;
     }
 
     /** Raid worlds and the private range: the only worlds where anyone can fire a gun. */
@@ -1689,8 +1689,8 @@ public final class RaidManager implements Listener {
      * Left-clicking an entity in spectator mode starts watching it. That would let the dead follow
      * an enemy around, or slip off the frozen death view: click the squadmate standing in front (or
      * the body at their feet), then Shift off that camera instead of the held one, into a free
-     * camera. So in a raid every camera is only for whoever the plugin put on it: the entry camera
-     * (an item display) while flying in, the death view and the kill replay's camera after death
+     * camera. So in a raid every camera is only for whoever the plugin put on it: their own entry
+     * camera (Cinematic's) while flying in, the death view and the kill replay's camera after death
      * (ReplayService knows which), and squadmates once the dead are watching them. Clicking anything
      * else does nothing. The plugin's own camera moves pass through here too and are let through.
      */
@@ -1715,7 +1715,7 @@ public final class RaidManager implements Listener {
             allowed = mate != null && mate.squad == own.squad;
         } else {
             // Dead but not yet watching a mate: nothing but ReplayService's cameras, above.
-            allowed = own.state == RaidPlayer.State.DEPLOYING && target instanceof ItemDisplay;
+            allowed = own.state == RaidPlayer.State.DEPLOYING && Cinematic.isCameraOf(target, id);
         }
         if (!allowed) {
             event.setCancelled(true);
@@ -1736,7 +1736,8 @@ public final class RaidManager implements Listener {
         Entity from = event.getSpectatorTarget();
         boolean held = player.getGameMode() == GameMode.SPECTATOR && from.isValid() && from.getWorld() == player.getWorld();
         RaidPlayer flying = session(player);
-        if (held && from instanceof ItemDisplay && flying != null && flying.state == RaidPlayer.State.DEPLOYING && flying.inFlight) {
+        if (held && Cinematic.isCameraOf(from, player.getUniqueId()) && flying != null && flying.state == RaidPlayer.State.DEPLOYING
+                && flying.inFlight) {
             event.setCancelled(true);
             return;
         }

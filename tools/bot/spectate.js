@@ -12,9 +12,12 @@
 // is the number of failures.
 //
 //   menu    the spectator menu (a spectate packet naming a player in the lobby) during the
-//           entry camera does nothing, and the player lands with the squad
+//           entry camera does nothing, and the player lands with the squad. Every camera packet of
+//           the flight names the player's own mannequin, which the bot already has (#166: one sent
+//           before the camera entity left a vanilla client in its own body for the whole flight)
 //   tp      a console `tp` to the overworld during the entry camera: the player is brought
-//           back, both squadmates land, and the log has no "Cannot measure distance"
+//           back, both squadmates land, and the log has no "Cannot measure distance"; each flew
+//           in on a mannequin of their own that the other was never sent
 //   end     `/cv end` during the entry camera closes the raid within 10 s; the player is in
 //           the lobby with the same gear and the entry fee back
 //   enddc   `/cv end` during the entry camera after a squadmate dropped out of it: when that
@@ -71,6 +74,7 @@ function make (again) {
   bot.worldName = ''
   bot.worlds = []    // {at, name}: every world the server put the bot in
   bot.cameras = []   // {at, id, type}: every camera packet, with what the bot knew of that entity
+  bot.spawned = new Set() // every entity id the server has sent the bot
   bot.modes = []     // {at, mode}: game mode changes
   bot.gone = []      // {at, id}: entities removed
   const track = p => {
@@ -92,6 +96,7 @@ function make (again) {
     bot._client.on('spawn_entity', p => console.log(name, Date.now() % 100000, 'spawn', p.entityId, p.type))
     bot._client.on('camera', p => console.log(name, Date.now() % 100000, 'camera', p.cameraId))
   }
+  bot._client.on('spawn_entity', p => bot.spawned.add(p.entityId))
   bot._client.on('entity_destroy', p => { for (const id of p.entityIds) bot.gone.push({ at: Date.now(), id }) })
   bot._client.on('add_resource_pack', p => { for (const r of [3, 4, 0]) bot._client.write('resource_pack_receive', { uuid: p.uuid, result: r }) })
   bot.on('messagestr', m => { if (m.trim()) bot.chatLog.push(m) })
@@ -160,6 +165,23 @@ function logFrom () {
   }
 }
 
+/**
+ * What is wrong with the camera packets of a bot's entry flight (#166), from entering the raid world
+ * until `until` (landing), the plugin letting go of the camera ('self') aside: each must name the
+ * bot's own mannequin, already sent to it. A vanilla client ignores a camera packet for an entity
+ * it does not have yet; that left the player in their own body, dragged along in jumps.
+ */
+function flightCameraProblems (bot, raidWorld, until) {
+  const entered = (bot.worlds.find(w => w.name === raidWorld) || { at: 0 }).at
+  const cams = bot.cameras.filter(c => c.at >= entered && c.at <= until && c.type !== 'self')
+  if (!cams.length) return ['no camera packet in the flight']
+  const out = []
+  if (cams[0].type !== 'mannequin') out.push(`first camera packet on ${cams[0].type}`)
+  const unknown = cams.filter(c => c.type === 'unknown').length
+  if (unknown) out.push(`${unknown} camera packet(s) for an entity not sent yet`)
+  return out
+}
+
 // The issue's error, this fix's own warnings, and any stack trace through Craftov.
 const LOG_PROBLEMS = /Cannot measure distance|Entry camera could not|Could not land|at net\.infnetwork\.snowball\.craftov/
 
@@ -201,7 +223,7 @@ const scenarios = {
     for (let i = 0; i < 3; i++) { spectate(A, B); await sleep(250) }
     const down = await waitFor(() => landed(A), 8000)
     const landedIn = (Date.now() - pickedAt) / 1000
-    const problems = []
+    const problems = flightCameraProblems(A, raidWorld, Date.now())
     const away = A.worlds.filter(w => w.at > cameraAt && w.name !== raidWorld)
     if (away.length) problems.push(`sent to ${away.map(w => w.name).join(',')}`)
     if (!down) problems.push(`not landed 8 s after the menu (${A.worldName} ${A.game.gameMode})`)
@@ -228,8 +250,16 @@ const scenarios = {
     const sentAt = Date.now()
     await rcon(`tp ${A.username} 0 100 0`)
     const both = await waitFor(() => landed(A) && landed(C), 12000)
+    const downAt = Date.now()
     await sleep(500)
-    const problems = []
+    const problems = [...flightCameraProblems(A, raidWorld, downAt).map(p => `A: ${p}`),
+      ...flightCameraProblems(C, raidWorld, downAt).map(p => `C: ${p}`)]
+    // Each flies in on a camera of their own, which nobody else is sent.
+    const camA = A.cameras.find(c => c.type === 'mannequin')
+    const camC = C.cameras.find(c => c.type === 'mannequin')
+    if (camA && camC && camA.id === camC.id) problems.push('A and C share a camera')
+    if (camA && C.spawned.has(camA.id)) problems.push("C was sent A's camera")
+    if (camC && A.spawned.has(camC.id)) problems.push("A was sent C's camera")
     const trip = A.worlds.filter(w => w.at >= sentAt).map(w => w.name)
     if (!both) problems.push(`A ${A.worldName} ${A.game.gameMode}, C ${C.worldName} ${C.game.gameMode}`)
     if (A.worldName !== raidWorld || C.worldName !== raidWorld) problems.push(`A in ${A.worldName}, C in ${C.worldName}`)

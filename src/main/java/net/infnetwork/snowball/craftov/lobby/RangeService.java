@@ -4,6 +4,7 @@ import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.gui.UiItems;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
+import net.infnetwork.snowball.craftov.item.Category;
 import net.infnetwork.snowball.craftov.item.ItemDef;
 import net.infnetwork.snowball.craftov.item.ItemRecord;
 import net.infnetwork.snowball.craftov.item.Keys;
@@ -20,7 +21,6 @@ import org.bukkit.entity.Interaction;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
-import org.bukkit.entity.Zombie;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -34,15 +34,19 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Private shooting ranges. Entering saves the player's lobby inventory and moves them to a copy of
- * the hangar's firing line in a separate world, one copy per player, far from all others and with
- * other players hidden. Leaving wipes everything they hold and restores the saved inventory, so
+ * Private shooting ranges, the one place outside a raid to shoot. Entering saves the player's lobby
+ * inventory and moves them to a firing line built on a copy of the hangar's north-east corner in a
+ * separate world, one plot per player, far from all others and with other players hidden, wearing a
+ * loaner rig and backpack. The corner's lane has steel silhouettes; two lanes built beside it
+ * ({@link RangeBuilder}) have bullseyes and silhouettes moving on rails ({@link RangeTargets}).
+ * Leaving wipes everything they hold and restores the saved inventory, so
  * nothing handed out on the range can ever reach the lobby, the stash or a raid. The saved
  * inventory is kept here as well as in the profile and written back on leaving, so nothing that
  * overwrites the profile's loadout during the session can cost the player their gear.
@@ -52,7 +56,7 @@ public final class RangeService implements Listener {
     public static final String WORLD = "craftov_range";
     public static final String EXIT = "range_exit";
     private static final int SPACING = 256;
-    // The hangar's firing line, copied block for block into every plot.
+    // The hangar's north-east corner, copied block for block into every plot under its firing lane.
     private static final int X0 = 6;
     private static final int X1 = LobbyBuilder.R + 1;
     private static final int Z0 = -LobbyBuilder.R - 1;
@@ -67,9 +71,20 @@ public final class RangeService implements Listener {
     private final Map<UUID, Map<Integer, ItemRecord>> saved = new HashMap<>();
     private final Map<Integer, List<Entity>> plotEntities = new HashMap<>();
     private final BitSet used = new BitSet();
+    private final RangeTargets targets;
 
     public RangeService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.targets = new RangeTargets(plugin);
+    }
+
+    public RangeTargets targets() {
+        return targets;
+    }
+
+    /** The range world, or null before it is created. */
+    public @Nullable World world() {
+        return world;
     }
 
     public void start() {
@@ -86,6 +101,7 @@ public final class RangeService implements Listener {
             }
         }
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 10L);
+        targets.start();
     }
 
     public boolean isRangeWorld(@Nullable World w) {
@@ -95,6 +111,11 @@ public final class RangeService implements Listener {
     /** True while the player is in their private range. */
     public boolean isIn(Player player) {
         return plots.containsKey(player.getUniqueId()) && isRangeWorld(player.getWorld());
+    }
+
+    /** The plot the player is on while on the range, else null. */
+    public @Nullable Integer plotOf(Player player) {
+        return isRangeWorld(player.getWorld()) ? plots.get(player.getUniqueId()) : null;
     }
 
     /** The weapon rack on the player's own plot, or null when they are not on the range. */
@@ -131,13 +152,29 @@ public final class RangeService implements Listener {
         player.setItemOnCursor(null);
         player.getInventory().setItem(CarryService.TERMINAL_SLOT, exitItem());
         player.getInventory().setItem(CarryService.MELEE_SLOT, plugin.items().create("knife_starter", 1));
-        // Wide open hands: the range ignores rig and backpack limits.
-        plugin.carry().refreshLocks(player);
+        wearLoanerGear(player);
         player.teleport(new Location(world, offset(plot) + 14.5, LobbyBuilder.Y + 1, -5.5, 180f, 0f));
         player.setGameMode(GameMode.ADVENTURE);
         hideOthers(player);
         plugin.tutorial().done(player, TutorialService.Step.RANGE);
-        Text.send(player, "<accent>已进入个人靶场。<muted>右键武器架领取武器，子弹无限；离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
+        Text.send(player, "<accent>已进入个人靶场。<muted>右键武器架领取武器，子弹无限；身上是靶场专用的胸挂和背包，"
+                + "武器架上的配件都装得下。离开时所有靶场物品自动清空，身上原有的装备会原样归还。");
+    }
+
+    /**
+     * Puts on a loaner rig and backpack, the roomiest of each, so everything on the rack fits at
+     * once: without them a player had two gun keys and no cell for a single attachment. They are
+     * range items like the loaners, so they leave with the session and have no stored form, and
+     * they cannot be taken off here (CarryListener): one taken off would pack the loaners inside,
+     * which cannot be packed, and lose them.
+     */
+    private void wearLoanerGear(Player player) {
+        for (Category category : new Category[]{Category.RIG, Category.BACKPACK}) {
+            plugin.registry().byCategory(category).stream()
+                    .max(Comparator.comparingInt(ItemDef::slots).thenComparingLong(ItemDef::value))
+                    .ifPresent(def -> plugin.carry().equip(player, plugin.items().markRange(plugin.items().create(def, 1))));
+        }
+        plugin.carry().refreshLocks(player);
     }
 
     /** Ends the session: everything held is discarded and the saved lobby inventory comes back. */
@@ -164,6 +201,8 @@ public final class RangeService implements Listener {
         player.getInventory().clear();
         player.setItemOnCursor(null);
         release(plot);
+        // A trial operator, the range's own skill cooldown and a sprint still running stay behind.
+        plugin.operators().leftRange(player);
         for (Player other : Bukkit.getOnlinePlayers()) {
             player.showPlayer(plugin, other);
             other.showPlayer(plugin, player);
@@ -216,6 +255,7 @@ public final class RangeService implements Listener {
             return;
         }
         int dx = offset(plot);
+        hold(plot, true);
         for (int x = X0; x <= X1; x++) {
             for (int z = Z0; z <= Z1; z++) {
                 for (int y = Y0; y <= Y1; y++) {
@@ -223,6 +263,9 @@ public final class RangeService implements Listener {
                 }
             }
         }
+        // The lobby itself has no lane any more (#164): the range is where shooting is done.
+        LobbyBuilder.lane(world, dx);
+        RangeBuilder.build(world, dx);
         List<Entity> spawned = new ArrayList<>();
         Location rack = new Location(world, dx + LobbyService.RACK_X, LobbyBuilder.Y + 1, LobbyService.RACK_Z);
         spawned.add(world.spawn(rack.clone().add(0, 1.2, 0), ItemDisplay.class, d -> {
@@ -243,30 +286,7 @@ public final class RangeService implements Listener {
             it.setPersistent(false);
             it.getPersistentDataContainer().set(Keys.key("station"), PersistentDataType.STRING, "range_rack");
         }));
-        for (int[] t : new int[][]{{11, -13}, {15, -16}, {19, -20}}) {
-            spawned.add(world.spawn(new Location(world, dx + t[0] + 0.5, LobbyBuilder.Y + 1, t[1] + 0.5, 0, 0), Zombie.class,
-                    false, z -> {
-                        z.setAI(false);
-                        z.setAdult();
-                        z.setSilent(true);
-                        z.setPersistent(false);
-                        // Never despawned for being far from players, as the lobby's and the training
-                        // course's targets; release() removes them with the range.
-                        z.setRemoveWhenFarAway(false);
-                        z.setShouldBurnInDay(false);
-                        z.getPersistentDataContainer().set(Keys.key("target"), PersistentDataType.BYTE, (byte) 1);
-                        z.customName(Text.mm("<muted>训练靶 " + Math.abs(t[1] + 9) + "m"));
-                        z.setCustomNameVisible(true);
-                        ItemDef helmet = plugin.registry().get("helmet_3");
-                        ItemDef vest = plugin.registry().get("armor_3");
-                        if (helmet != null) {
-                            z.getEquipment().setHelmet(plugin.items().create(helmet, 1));
-                        }
-                        if (vest != null) {
-                            z.getEquipment().setChestplate(plugin.items().create(vest, 1));
-                        }
-                    }));
-        }
+        targets.spawn(world, plot, dx, spawned);
         calibration(lobby, plot, dx, spawned);
         plotEntities.put(plot, spawned);
     }
@@ -318,7 +338,31 @@ public final class RangeService implements Listener {
         }));
     }
 
+    /**
+     * Keeps the plot's chunks loaded while it is in use, the 50 m calibration target's included. The
+     * targets are spawned before the player arrives, and a chunk with no ticket unloads at the end of
+     * the tick, discarding them (they are never saved): only those near where the player lands
+     * survived. Released with the plot, after its entities are removed.
+     */
+    private void hold(int plot, boolean held) {
+        if (world == null) {
+            return;
+        }
+        int dx = offset(plot);
+        int z0 = Math.min(RangeBuilder.FAR, (int) Math.floor(-5.5 - CALIBRATION_DISTANCE)) - 1;
+        for (int cx = Math.floorDiv(dx + RangeBuilder.WEST - 1, 16); cx <= Math.floorDiv(dx + X1 + 1, 16); cx++) {
+            for (int cz = Math.floorDiv(z0, 16); cz <= Math.floorDiv(RangeBuilder.BACK + 1, 16); cz++) {
+                if (held) {
+                    world.addPluginChunkTicket(cx, cz, plugin);
+                } else {
+                    world.removePluginChunkTicket(cx, cz, plugin);
+                }
+            }
+        }
+    }
+
     private void release(int plot) {
+        targets.clear(plot);
         List<Entity> spawned = plotEntities.remove(plot);
         if (spawned != null) {
             spawned.forEach(Entity::remove);
@@ -332,6 +376,7 @@ public final class RangeService implements Listener {
                 }
             }
         }
+        hold(plot, false);
         used.clear(plot);
     }
 
@@ -353,7 +398,8 @@ public final class RangeService implements Listener {
             }
             Location l = player.getLocation();
             int dx = offset(plot);
-            if (l.getX() < dx + X0 - 1 || l.getX() > dx + X1 + 1 || l.getZ() < Z0 - 1 || l.getZ() > Z1 + 1 || l.getY() < Y0 - 4) {
+            if (l.getX() < dx + RangeBuilder.WEST - 1 || l.getX() > dx + X1 + 1 || l.getZ() < RangeBuilder.FAR - 1
+                    || l.getZ() > RangeBuilder.BACK + 1 || l.getY() < Y0 - 4) {
                 player.teleport(new Location(world, dx + 14.5, LobbyBuilder.Y + 1, -5.5, 180f, 0f));
             }
         }
@@ -402,6 +448,17 @@ public final class RangeService implements Listener {
     public void onDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Player && isRangeWorld(event.getEntity().getWorld())) {
             event.setCancelled(true);
+        }
+    }
+
+    /**
+     * A round, knife or blast reaching a range target (DamageService#deal): before LobbyService
+     * cancels the damage and heals it, so a silhouette can count it against its own health.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onTargetDamage(EntityDamageEvent event) {
+        if (plugin.damage().isApplying() && isRangeWorld(event.getEntity().getWorld())) {
+            targets.damaged(event.getEntity(), event.getDamage());
         }
     }
 

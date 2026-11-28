@@ -1042,19 +1042,21 @@ HUD_IMAGES = {
     **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
     **{'craftov/crosshair/%d.png' % i: (lambda g=g: hudart.crosshair(g)) for i, g in enumerate(hudart.CROSSHAIR_GAPS)},
     'craftov/crosshair/%d.png' % len(hudart.CROSSHAIR_GAPS): lambda: hudart.dot_crosshair(),
-    'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
-    'craftov/compass/s.png': lambda: hudart.glyph('S'),
-    'craftov/compass/e.png': lambda: hudart.glyph('E'),
-    'craftov/compass/w.png': lambda: hudart.glyph('W'),
-    'craftov/compass/ne.png': lambda: hudart.glyph('NE', scale=1),
-    'craftov/compass/nw.png': lambda: hudart.glyph('NW', scale=1),
-    'craftov/compass/se.png': lambda: hudart.glyph('SE', scale=1),
-    'craftov/compass/sw.png': lambda: hudart.glyph('SW', scale=1),
-    'craftov/compass/chain.png': lambda: hudart.tick(),
-    'craftov/compass/point.png': lambda: hudart.pointer(),
-    'craftov/compass/extract_open.png': lambda: hudart.diamond(rgb('#5BD16B')),
-    'craftov/compass/extract_closed.png': lambda: hudart.diamond(rgb('#8A8F98')),
-    'craftov/compass/objective.png': lambda: hudart.diamond(rgb(palette.ACCENT)),
+    'craftov/compass/n.png': lambda: hudart.compass_letter('N', rgb('#FF6B5B'), em=13),
+    'craftov/compass/s.png': lambda: hudart.compass_letter('S', em=13),
+    'craftov/compass/e.png': lambda: hudart.compass_letter('E', em=13),
+    'craftov/compass/w.png': lambda: hudart.compass_letter('W', em=13),
+    'craftov/compass/ne.png': lambda: hudart.compass_letter('NE'),
+    'craftov/compass/nw.png': lambda: hudart.compass_letter('NW'),
+    'craftov/compass/se.png': lambda: hudart.compass_letter('SE'),
+    'craftov/compass/sw.png': lambda: hudart.compass_letter('SW'),
+    # The compass draws everything at 1 / COMPASS_K (its letters are the text face at that many texels
+    # per GUI pixel), so the ticks and markers are their pixel art blown up by as much.
+    'craftov/compass/chain.png': lambda: hudart.compass_art(hudart.tick()),
+    'craftov/compass/point.png': lambda: hudart.compass_art(hudart.pointer()),
+    'craftov/compass/extract_open.png': lambda: hudart.compass_art(hudart.diamond(rgb('#5BD16B'))),
+    'craftov/compass/extract_closed.png': lambda: hudart.compass_art(hudart.diamond(rgb('#8A8F98'))),
+    'craftov/compass/objective.png': lambda: hudart.compass_art(hudart.diamond(rgb(palette.ACCENT))),
 }
 
 IN_RAID = {'1': {'first': 'craftov_in_raid', 'second': 'true', 'operation': '=='}}
@@ -1393,7 +1395,9 @@ def build_betterhud():
     compass = {'craftov_compass': {
         'type': 'circle', 'default': False,
         'file': {d: {'name': 'craftov/compass/' + d + '.png'} for d in ('n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'chain')},
-        'scale': 1.0, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
+        # BetterHud ignores a picture's own scale while apply-opacity is on, so the whole compass is drawn
+        # at 1 / COMPASS_K and every picture in it is COMPASS_K texels per GUI pixel (#192).
+        'scale': 1 / hudart.COMPASS_K, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
         'gui': {'x': 50, 'y': 0}, 'pixel': {'x': 0, 'y': 6}, 'apply-opacity': True,
     }}
     compass['craftov_compass']['file']['point'] = {'name': 'craftov/compass/point.png', 'y': -6}

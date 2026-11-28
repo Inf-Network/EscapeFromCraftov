@@ -74,10 +74,10 @@ public final class TrainingService {
         /** The settlement's icon for it (craftov:ui/...). */
         public final String icon;
         /**
-         * The HUD objective line: plain text. In a raid it sits on the 132 px panel under the squad
+         * The HUD objective line: plain text. In a raid it sits on the 140 px panel under the squad
          * rows, after "目标 " and before " · 99m" or " · 到了" (HudData#objective): with a target
-         * at most 6 Chinese characters, or the 0/3 count's room after four. The kill feed reaches
-         * in from the right on a 320 px wide GUI, so the panel cannot grow.
+         * at most 6 Chinese characters, or the 0/3 count's room after four (a longer one is cut). The
+         * kill feed reaches in from the right on a 320 px wide GUI, so the panel cannot grow.
          */
         public final String objective;
 

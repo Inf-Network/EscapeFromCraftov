@@ -211,8 +211,11 @@ public final class BetterHudBridge implements BetterHudHook {
         pm.getNumberContainer().addPlaceholder(name, HudPlaceholder.of((args, event) -> hp -> fn.apply(plugin.hud().snapshotOf(hp.uuid()))));
     }
 
+    /** A text placeholder, cut to the room its panel has for it (HudFont#budget) so it never runs out of it. */
     private void string(PlaceholderManager pm, String name, Function<HudSnapshot, String> fn) {
-        pm.getStringContainer().addPlaceholder(name, HudPlaceholder.of((args, event) -> hp -> fn.apply(plugin.hud().snapshotOf(hp.uuid()))));
+        int budget = HudFont.budget(name, Integer.MAX_VALUE);
+        Function<HudSnapshot, String> fitted = budget == Integer.MAX_VALUE ? fn : s -> HudFont.fit(fn.apply(s), budget);
+        pm.getStringContainer().addPlaceholder(name, HudPlaceholder.of((args, event) -> hp -> fitted.apply(plugin.hud().snapshotOf(hp.uuid()))));
     }
 
     private void bool(PlaceholderManager pm, String name, Function<HudSnapshot, Boolean> fn) {

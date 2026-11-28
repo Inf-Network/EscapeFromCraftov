@@ -5817,5 +5817,32 @@
   "｜": 6,
   "｝": 4,
   "～": 10
+ },
+ "fit": {
+  "craftov_map": 100,
+  "craftov_tier": 20,
+  "craftov_nearest": 107,
+  "craftov_value_short": 51,
+  "craftov_operator": 36,
+  "craftov_skill": 84,
+  "craftov_mate_1": 131,
+  "craftov_mate_2": 131,
+  "craftov_mate_name": 97,
+  "craftov_objective": 191,
+  "craftov_objective_raid": 131,
+  "craftov_alert_1": 128,
+  "craftov_alert_2": 128,
+  "craftov_alert_3": 128,
+  "craftov_money_big": 59,
+  "craftov_weapon": 111,
+  "craftov_ammo_type": 70,
+  "craftov_weapon_hint": 70,
+  "craftov_firemode": 31,
+  "craftov_feed_1": 170,
+  "craftov_feed_2": 170,
+  "craftov_feed_3": 170,
+  "craftov_feed_4": 170,
+  "craftov_feed_5": 170,
+  "craftov_prompt": 194
  }
 }

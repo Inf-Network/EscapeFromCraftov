@@ -36,7 +36,7 @@ public record HudSnapshot(
                 d.armorPercent(p, CarryService.HEAD), d.armorPercent(p, CarryService.CHEST),
                 d.armorClass(p, CarryService.HEAD), d.armorClass(p, CarryService.CHEST), d.downedPercent(p), d.skillCooldown(p),
                 value, money, d.weaponName(p), d.fireMode(p), d.ammoType(p), d.time(p), d.mapName(p), d.tierName(p),
-                d.nearestExtract(p), d.injuries(p), d.operator(p), d.skill(p), Text.moneyShort(value), Text.money(money),
+                d.nearestExtract(p), d.injuries(p), d.operator(p), d.skill(p), Text.moneyShort(value), HudData.moneyText(money),
                 String.format("%.1f", d.extractSecondsLeft(p)), d.parts(p), d.stamina(p), d.usingMed(p), d.medName(p),
                 d.medLeft(p), d.medPercent(p), d.weaponHint(p), d.drawing(p), d.drawPercent(p), d.downedHint(p),
                 d.streakBadge(p), d.crosshair(p), extra);

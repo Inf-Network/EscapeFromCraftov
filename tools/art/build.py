@@ -1003,19 +1003,26 @@ TEXT, MUTED, DIM, ACCENT_HEX = palette.TEXT, palette.MUTED, palette.DIM, palette
 OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
 
 STAMINA_W = 100
+# The top-left column (info, skill, squad rows, the raid objective, alerts). The kill feed's rows reach
+# in from the right to x 144 on a 320 px wide GUI, so the column ends there: 4 px margin + 140.
+COLUMN_W = 140
+# The lobby's objective line, wider: no kill feed beside it.
+OBJECTIVE_W = 200
+# GUI px a text keeps clear of its panel's far edge (HudFont cuts a value that would come closer).
+TEXT_PAD = 3
 
 HUD_IMAGES = {
     'craftov/panel_vitals.png': lambda: hudart.panel(88, 38),
     'craftov/panel_weapon.png': lambda: hudart.panel(118, 38, side='right'),
-    'craftov/panel_skill.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
-    'craftov/panel_info.png': lambda: hudart.panel(132, 44),
-    'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
+    'craftov/panel_skill.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_info.png': lambda: hudart.panel(COLUMN_W, 44),
+    'craftov/panel_mate.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.LINE)),
     # The new-player guide's objective line: wide in the lobby, the squad rows' width in a raid, where
     # the kill feed's rows reach in from the right on a 320 px wide GUI.
-    'craftov/panel_objective.png': lambda: hudart.panel(200, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_objective.png': lambda: hudart.panel(OBJECTIVE_W, 12, accent=rgb(palette.ACCENT)),
     # The alert banner: one row per line of text, the rows after the first without the top edge.
-    'craftov/panel_alert.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
-    'craftov/panel_alert_more.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT), top=False),
+    'craftov/panel_alert.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_alert_more.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT), top=False),
     # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
     'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
@@ -1110,14 +1117,51 @@ def alert_layout(*conditions):
 
 
 def hud_font_widths(sheet, rows):
-    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows): how far the HUD's
-    text font moves after each character at scale 1 (craftov_text), listing only those that do not
-    advance as far as a hanzi. A bitmap glyph advances by its inked width plus one."""
+    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows and cuts what would
+    not fit its panel): how far the HUD's text font moves after each character at scale 1
+    (craftov_text), listing only those that do not advance as far as a hanzi (a bitmap glyph advances
+    by its inked width plus one), and the room each placeholder has (hud_budgets)."""
     adv = textfont.hud_advances(sheet, rows)
     default = adv['中']
     advances = {' ': 4}
     advances.update({ch: a for ch, a in adv.items() if a != default})
-    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances})
+    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances,
+                                                          'fit': hud_budgets(advances, default)})
+
+
+def hud_budgets(advances, default):
+    """The widest each placeholder's value may be (GUI px at scale 1), from the layouts below: the
+    panel's width, where the text starts and the fixed words around it, TEXT_PAD short of the far
+    edge (#192). HudFont cuts a longer value with "…"; for the extract line, the squad rows and the
+    objective the server cuts the name or goal and keeps the distance or state after it."""
+    def w(text):
+        return sum(advances.get(ch, default) for ch in text)
+
+    with open(os.path.join(RES, 'config.yml'), encoding='utf-8') as f:
+        tiers = [t['name'] for t in yaml.safe_load(f)['tiers'].values()]
+    room = COLUMN_W - 6 - TEXT_PAD              # a top-left panel's text starts at x 6
+    operator = 4 * default                      # operator names are two hanzi; four fit
+    tier = max(w(t) for t in tiers)
+    states = (' 倒地', ' 阵亡', ' 已撤离', ' 断线', ' ❤100')
+    return {
+        'craftov_map': room - w(' · ') - tier, 'craftov_tier': tier,
+        'craftov_nearest': room - w('撤离 '),
+        'craftov_value_short': COLUMN_W - 72 - TEXT_PAD - w('◈ '),
+        'craftov_operator': operator,
+        'craftov_skill': min(room - operator - w(' · '), room - w('技能 ')),
+        **{'craftov_mate_%d' % i: room for i in (1, 2)},
+        'craftov_mate_name': room - max(w(t) for t in states),
+        'craftov_objective': OBJECTIVE_W - 6 - TEXT_PAD, 'craftov_objective_raid': room,
+        **{'craftov_alert_%d' % i: COLUMN_W - 12 for i in range(1, ALERT_LINES + 1)},
+        # The balance in the big digits (twice the size) from x 18; HudData.moneyText shortens it.
+        'craftov_money_big': (COLUMN_W - 18 - TEXT_PAD) // 2,
+        # The weapon panel: the name across the top, right-aligned at 114; the ammo type or hint right of
+        # the big magazine digits (right-aligned at 40); the fire mode right of "／" and the reserve.
+        'craftov_weapon': 114 - TEXT_PAD, 'craftov_ammo_type': 114 - 44, 'craftov_weapon_hint': 114 - 44,
+        'craftov_firemode': 114 - (42 + w('／9999') + TEXT_PAD),
+        **{'craftov_feed_%d' % i: 170 for i in FEED_LINES},
+        'craftov_prompt': 200 - 2 * TEXT_PAD,
+    }
 
 
 def numbered(items):

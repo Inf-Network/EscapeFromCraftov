@@ -66,9 +66,9 @@ public final class HudService {
     private record Timed(String text, String[] lines, long until) {
     }
 
-    /** Rows of the alert banner and the text width of one (its panel is 132 px, 6 px padding each side). */
+    /** Rows of the alert banner and the text width of one (its panel less 6 px padding each side). */
     public static final int ALERT_LINES = 3;
-    public static final int ALERT_WIDTH = 120;
+    public static final int ALERT_WIDTH = HudFont.budget("craftov_alert_1", 120);
     private static final String[] NO_ALERT = new String[ALERT_LINES];
 
     static {

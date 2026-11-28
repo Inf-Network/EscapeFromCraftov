@@ -1,18 +1,21 @@
 // The carry interface (issue #10), checked from the protocol side:
 //
+//   gear     no rig or backpack (#184, #176): Q on the worn vest in the lobby leaves it on, a gold bar
+//            given lands in a pocket and a second vest does not, and a shift-click on the worn vest
+//            puts it into the stash.
 //   zones    a new account (starter rig_1 + pack_1): each carry zone has locked cells, and exactly
 //            one of them per zone shows a tooltip. Ammo, a gold bar, a rifle and a bandage given
 //            land where their category goes: ammo and the bandage on a free quick key (4-8), the
 //            gold bar in the backpack, the rifle in the backpack once keys 1-2 hold guns.
-//   rules    zone rules on the inventory screen: a gold bar placed on key 1 or on a quick key, a
-//            gun placed in the rig and a number-key swap that would put a gun on a quick key are
-//            all refused (nothing moves); placing ammo on a quick key is fine; shift-click on the
-//            gold bar moves it within the backpack zones, never onto the hotbar.
+//   rules    zone rules on the inventory screen: a gold bar placed on key 1, a gun placed in the
+//            rig and a number-key swap that would put a gun on a pocket (keys 4-8) are all refused
+//            (nothing moves); a gold bar or ammo placed in a pocket is fine (#176); shift-click on
+//            the gold bar in the backpack moves it to a pocket.
 //   matrix   every kind of item (gun, ammo, med, key, valuable, armour) x every zone (gun key, quick
 //            key, rig, backpack): picked up and placed on an empty cell of the zone, and for the two
 //            hotbar zones moved there with a number key; it moves exactly when the zone takes it
-//            (CarryService.refusal), and a refused one stays where it was. A drag of a gold bar over
-//            two quick keys is refused; one of ammo over two rig cells goes through.
+//            (CarryService.refusal), and a refused one stays where it was. A drag of a vest over
+//            two pockets is refused; one of ammo over two rig cells goes through.
 //   info     the inventory screen's crafting grid shows the five info cells (raw 0..4) after a
 //            full resync and after a click on them; a click on raw 3 opens the secure container;
 //            the player never holds an info cell afterwards (server-side count).
@@ -49,7 +52,7 @@
 //            shift-clicked into the box and worn again with a right click, and take all. Each case
 //            also checks that the click did what it should (the cell emptied, the item arrived).
 //
-//   PORT=25565 RCON_PORT=25575 node carryui.js [zones rules matrix info cursor stash trader preset secure loot ghost]
+//   PORT=25565 RCON_PORT=25575 node carryui.js [gear zones rules matrix info cursor stash trader preset secure loot ghost]
 //
 // The server needs test.enabled (secure, loot and ghost queue for the proving ground). Bots use random
 // names (new accounts with the starter kit); trader, preset and secure prepare the profile by
@@ -226,9 +229,9 @@ async function rules () {
   check('rules: a gold bar is refused on key 1', where(bot, 'gold_bar')[0] === gold && snapshot() === before, where(bot, 'gold_bar'))
   const quickEmpty = QUICK.find(i => !bot.inventory.slots[i])
   if (quickEmpty !== undefined) {
-    before = snapshot()
     await tryPlace(gold, quickEmpty)
-    check('rules: a gold bar is refused on an empty quick key', where(bot, 'gold_bar')[0] === gold && snapshot() === before, where(bot, 'gold_bar'))
+    check('rules: a gold bar may go in a pocket (#176)', where(bot, 'gold_bar')[0] === quickEmpty, where(bot, 'gold_bar'))
+    await tryPlace(quickEmpty, gold) // back into the backpack
   }
   const rigFree = RIG_CELLS.find(i => !bot.inventory.slots[i])
   if (rigFree !== undefined) {
@@ -247,7 +250,7 @@ async function rules () {
     }
   }
   rawClick(bot, 0, gold, 0, 1); await settle(bot) // shift-click
-  check('rules: shift-click keeps a gold bar off the hotbar', where(bot, 'gold_bar').every(s => s < 36), where(bot, 'gold_bar'))
+  check('rules: shift-click moves a gold bar from the backpack to a pocket', where(bot, 'gold_bar').every(s => QUICK.includes(s)), where(bot, 'gold_bar'))
   bot.quit()
 }
 
@@ -257,7 +260,7 @@ const TAKES = {
   ammo_556_m855: [false, true, true, true],
   bandage: [false, true, true, true],
   key_dorm: [false, true, true, true],
-  gold_bar: [false, false, true, true],
+  gold_bar: [false, true, true, true],
   armor_1: [false, false, false, true]
 }
 
@@ -317,8 +320,8 @@ async function matrix () {
   }
   const quick = QUICK.filter(i => !bot.inventory.slots[i]).slice(0, 2)
   if (quick.length === 2) {
-    await drag(where(bot, 'gold_bar').find(i => i >= 9 && i < 36), quick)
-    check('matrix: a gold bar dragged over two quick keys stays off them', quick.every(i => idOf(bot.inventory.slots[i]) !== 'gold_bar'), where(bot, 'gold_bar'))
+    await drag(where(bot, 'armor_1').find(i => i >= 9 && i < 36), quick)
+    check('matrix: a vest dragged over two pockets stays off them', quick.every(i => idOf(bot.inventory.slots[i]) !== 'armor_1'), where(bot, 'armor_1'))
   }
   const rig = RIG_CELLS.filter(i => !bot.inventory.slots[i]).slice(0, 2)
   if (rig.length === 2) {
@@ -394,6 +397,7 @@ async function cursor () {
 /**
  * Gear with no rig or backpack (#184): Q on the worn vest in the lobby leaves it on (it used to go
  * to gun key 1), and a shift-click on it puts it into the stash since it fits nowhere on the player.
+ * Pockets (#176): a gold bar given then lands in a pocket, a second vest never does (it is mailed).
  */
 async function gear () {
   const bot = await make('Cg')
@@ -410,6 +414,13 @@ async function gear () {
   await settle(bot)
   check('gear: Q on the worn vest in the lobby leaves it on', !!vest && await wornId(bot, 'chest') === vest
     && idOf(bot.inventory.slots[36]) === key1, { vest, key1, after: idOf(bot.inventory.slots[36]) })
+  await cmd(`cv give ${bot.username} gold_bar 1`)
+  await cmd(`cv give ${bot.username} armor_1 1`)
+  await settle(bot, 600)
+  check('gear: with no rig or backpack a gold bar lands in a pocket', where(bot, 'gold_bar').length === 1
+    && QUICK.includes(where(bot, 'gold_bar')[0]), where(bot, 'gold_bar'))
+  check('gear: a second vest never goes into a pocket', bot.inventory.slots.filter((s, i) => i !== 6 && idOf(s) === 'armor_1').length === 0,
+    where(bot, 'armor_1'))
   bot.msgs.length = 0
   rawClick(bot, 0, 6, 0, 1) // shift-click: no backpack, so into the stash
   await settle(bot, 600)

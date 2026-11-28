@@ -4,8 +4,10 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -137,8 +139,12 @@ final class MotionTracker {
         int newSteps;
         /** The walking pace the movement-speed attribute allowed in each of the last server ticks. */
         final double[] paces = new double[PACE_HISTORY];
+        /** The same without the sprint's part: what {@link #paces} become when the client stops a sprint itself. */
+        final double[] walkPaces = new double[PACE_HISTORY];
         int nextPace;
         boolean pacesSet;
+        /** The server tick the server last stopped the player's sprint itself (see {@link #sprintForced}). */
+        long forcedStop = Long.MIN_VALUE / 2;
         /** The highest of {@link #paces}: the pace to compare with. */
         double pace = WALK_SPEED;
         /** Consecutive readings spent on the ground well over that pace. */
@@ -314,20 +320,19 @@ final class MotionTracker {
         Location at = player.getLocation();
         Track track = tracks.computeIfAbsent(player.getUniqueId(), id -> new Track());
         double walk = walkPace(player);
+        double unsprinted = unsprinted(player);
         if (!track.pacesSet) {
             Arrays.fill(track.paces, walk);
+            Arrays.fill(track.walkPaces, unsprinted);
             track.pacesSet = true;
         }
         track.paces[track.nextPace] = walk;
+        track.walkPaces[track.nextPace] = unsprinted;
         track.nextPace = (track.nextPace + 1) % PACE_HISTORY;
         // A speed the server lowers (aiming on a sprint, stamina running out, a skill ending, a
         // fracture) reaches the client a round trip later, and until then it honestly moves at the
         // old pace: the window covers that round trip twice over (for jitter) on top of its own ticks.
-        int window = settleTicks(player);
-        double pace = 0;
-        for (int i = 1; i <= window; i++) {
-            pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
-        }
+        double pace = windowPace(track, player);
         track.pace = pace;
         if (track.heldTicks > 0) {
             track.heldTicks--;
@@ -701,6 +706,61 @@ final class MotionTracker {
     private static double walkPace(Player player) {
         AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
         return (attribute == null ? 0.1 : attribute.getValue()) * BLOCKS_PER_SPEED;
+    }
+
+    /** The vanilla sprint's speed modifier (30% more, on the total). */
+    private static final NamespacedKey SPRINTING = NamespacedKey.minecraft("sprinting");
+
+    /** {@link #walkPace} without the sprint's part. */
+    private static double unsprinted(Player player) {
+        AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        if (attribute == null) {
+            return 0.1 * BLOCKS_PER_SPEED;
+        }
+        double value = attribute.getValue();
+        AttributeModifier sprint = attribute.getModifier(SPRINTING);
+        if (sprint != null && sprint.getOperation() == AttributeModifier.Operation.MULTIPLY_SCALAR_1 && sprint.getAmount() > -1) {
+            value /= 1 + sprint.getAmount();
+        }
+        return value * BLOCKS_PER_SPEED;
+    }
+
+    /** The highest pace in the window the player's round trip calls for (see {@link #settleTicks}). */
+    private static double windowPace(Track track, Player player) {
+        int window = settleTicks(player);
+        double pace = 0;
+        for (int i = 1; i <= window; i++) {
+            pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
+        }
+        return pace;
+    }
+
+    /**
+     * The server stopped the player's sprint itself (aiming, stamina, a broken leg, a slide, going
+     * down): the client hears it a round trip later and runs at a sprint until then, so the sprint
+     * stays in the pace to beat for the usual window, also when the client's own stop comes in.
+     */
+    void sprintForced(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        if (track != null) {
+            track.forcedStop = Bukkit.getCurrentTick();
+        }
+    }
+
+    /**
+     * The client said it stopped sprinting (PlayerToggleSprintEvent, before its movement of that tick).
+     * On its own word the sprint goes out of the pace to beat at once: it moves at its walking pace from
+     * this tick on, and slows down by vanilla friction, which the check allows for. Kept for the usual
+     * window was the gap of issue #171: a client that said it stopped but ran on at a sprint had the
+     * walking cone for 10 ticks. Not when the server stopped the sprint lately (see {@link #sprintForced}).
+     */
+    void sprintStopped(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        if (track == null || !track.pacesSet || Bukkit.getCurrentTick() - track.forcedStop <= settleTicks(player)) {
+            return;
+        }
+        System.arraycopy(track.walkPaces, 0, track.paces, 0, PACE_HISTORY);
+        track.pace = windowPace(track, player);
     }
 
     /** Horizontal speed in blocks per tick, averaged over the last few ticks. */

@@ -2318,6 +2318,23 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /** The client's own sprint stop (see {@link MotionTracker#sprintStopped}). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSprintStop(PlayerToggleSprintEvent event) {
+        if (!event.isSprinting()) {
+            motion.sprintStopped(event.getPlayer());
+        }
+    }
+
+    /**
+     * Stops the player's sprint from the server's side (the client hears it a round trip later): the
+     * movement check allows for the sprint the client keeps until then (see {@link MotionTracker#sprintForced}).
+     */
+    public void stopSprint(Player player) {
+        motion.sprintForced(player);
+        player.setSprinting(false);
+    }
+
     /** A teleport is not movement: measure speed again from where the player lands. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {

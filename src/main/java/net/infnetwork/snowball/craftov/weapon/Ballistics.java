@@ -335,6 +335,15 @@ public final class Ballistics {
         return type.name().contains("GLASS") && type != Material.TINTED_GLASS && plugin.raids().isRaidWorld(block.getWorld());
     }
 
+    /** Breaks raid glass struck by something other than a round (a knife): true if it broke. */
+    public boolean breakGlass(Block block) {
+        if (!shatters(block)) {
+            return false;
+        }
+        shatter(block, block.getLocation().add(0.5, 0.5, 0.5));
+        return true;
+    }
+
     /** Breaks the glass a round met at {@code at}. Returns the share of its damage the round keeps going on. */
     private double shatter(Block block, Location at) {
         World world = at.getWorld();

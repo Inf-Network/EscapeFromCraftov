@@ -1,11 +1,15 @@
 package net.infnetwork.snowball.craftov.gui;
 
 import net.infnetwork.snowball.craftov.CraftovPlugin;
+import net.infnetwork.snowball.craftov.item.ItemFactory;
+import net.infnetwork.snowball.craftov.item.ItemRecord;
+import net.infnetwork.snowball.craftov.profile.Profile;
 import net.infnetwork.snowball.craftov.util.Notify;
 import net.infnetwork.snowball.craftov.raid.Raid;
 import net.infnetwork.snowball.craftov.raid.RaidPlayer;
 import net.infnetwork.snowball.craftov.util.Text;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 /** Entry points for every menu. */
@@ -41,6 +45,35 @@ public final class MenuService {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Puts a carried stack into the stash from outside the stash's own item cells: worn gear taken
+     * off with no room left on the player (#184). Only in the lobby, never a range loaner or a
+     * proving-ground item. Returns why not, or null when it went in; the caller takes it off the
+     * player and captures the loadout.
+     */
+    public @Nullable String stash(Player player, ItemStack stack) {
+        if (plugin.raids().raidOf(player) != null || plugin.range().isIn(player) || !plugin.lobby().isLobby(player.getWorld())) {
+            return "只有在大厅才能存入仓库";
+        }
+        if (ItemFactory.isRange(stack)) {
+            return "靶场武器不能存入仓库";
+        }
+        if (ItemFactory.isTest(stack)) {
+            return "试验场物资不能存入仓库";
+        }
+        ItemRecord record = plugin.items().toRecord(stack);
+        if (record == null) {
+            return "这件物品不能存入仓库";
+        }
+        Profile p = plugin.profiles().get(player);
+        if (p.stashUsed() + record.footprint() > p.stashCapacity) {
+            return "仓库已满，可在仓库中扩容";
+        }
+        StashMenu.deposit(plugin, p, record);
+        plugin.profiles().markDirty(player.getUniqueId());
+        return null;
     }
 
     public void openMain(Player player) {

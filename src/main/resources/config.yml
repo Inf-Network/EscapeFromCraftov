@@ -3,7 +3,7 @@
 # Goes up with every plugin update that changes a default. On start-up a server copy with a lower
 # number gets each such key moved to the new default if it still holds an old one; a value someone
 # changed stays, and so do the comments. The log lists what changed. Leave it to the plugin.
-config-revision: 2
+config-revision: 3
 
 # New players receive this once. Loadout keys are inventory slots:
 # 0-7 hotbar, 9-17 chest rig cells, 18-35 backpack cells, 36 backpack, 37 rig, 38 body armor, 39 helmet.
@@ -335,6 +335,9 @@ combat:
     zone-multipliers:
       arm: 0.6
       leg: 0.6
+    # A knife to the head kills a plain soldier outright, helmet or not (bosses and their guards
+    # take the normal cut).
+    soldier-head-kill: true
     # F with a knife in hand inspects it (first person only) for this many ticks. The animation is
     # baked into the resource pack as 50 frames over the inspect (tools/art/knife_inspect.py): a
     # different length plays the same motion faster or slower.
@@ -554,10 +557,12 @@ ai:
   # A soldier's body or limb hit does this share of what a player's would with the same gun and
   # ammo, before armour (a boss: x1.15 on top). Headshots are softer still: soldiers use half the
   # gun's head multiplier (at least x1), so with the usual x2.0 a soldier's headshot does about a
-  # third of a player's. World difficulty never changes any of it. 0.65 is the designed value;
-  # about 0.95 keeps the feel of when raid worlds ran on hard difficulty (0.65 x 1.5 = 0.975).
-  damage-multiplier: 0.65
-  reaction-ticks: 14
+  # third of a player's. World difficulty never changes any of it. 0.55 since #183 (was 0.65, which
+  # the owner found a little too strong); about 0.95 keeps the feel of when raid worlds ran on hard
+  # difficulty.
+  damage-multiplier: 0.55
+  # Ticks between a soldier spotting a player and its first shot (18 since #183, was 14).
+  reaction-ticks: 18
   # How far from the point it aims at a soldier's rounds land, in metres at the target, the same at
   # any distance: from the first value at the lowest accuracy (常规 0.55) to the second at 1.0 and up
   # (绝密 operators and bosses). On a moving target it grows with the target's measured speed (x1.4

@@ -298,7 +298,7 @@ async function listSome (bot, count) {
   if (!w) return
   for (let k = 0; k < count && !bot.gone; k++) {
     const slots = []
-    for (let s = 9; s < 45; s++) if (w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
+    for (let s = 9; s < 45; s++) if (s % 9 < 6 && w.slots[s] && cid(w.slots[s]) && GUNS.includes(cid(w.slots[s]))) slots.push(s)
     if (!slots.length) break
     const pm = await openWith(bot, () => bot.clickWindow(slots[Math.floor(Math.random() * slots.length)], 1, 0))
     if (!pm) break

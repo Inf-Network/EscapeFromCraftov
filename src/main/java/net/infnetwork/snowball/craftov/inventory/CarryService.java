@@ -25,14 +25,16 @@ import java.util.Map;
  * Maps the Delta-style carry layout onto the vanilla player inventory.
  * <pre>
  *  hotbar 0..1   guns (keys 1-2)               hotbar 2  melee weapon (key 3)
- *  hotbar 3..7   ammo, meds, grenades, keys    hotbar 8  terminal (locked)
+ *  hotbar 3..7   pockets                       hotbar 8  terminal (locked)
  *  row 9..17     chest rig slots              rows 18..35 backpack slots
  *  36 feet = backpack   37 legs = rig   38 chest = body armor   39 head = helmet
  * </pre>
- * Each zone takes only what belongs there ({@link #refusal}): keys 1-2 take guns, keys 4-8 ammo,
- * meds, grenades and keys, and the rig no guns, armour or containers. Loot goes where it belongs
- * ({@link #route}): ammo, meds and grenades to the free quick keys first, then the rig, then the
- * backpack; guns to a free gun key, then the backpack; everything else to the backpack, then the rig.
+ * Each zone takes only what belongs there ({@link #refusal}): keys 1-2 take guns, and the pockets
+ * (keys 4-8) and the rig take anything small: no guns, armour, rigs or backpacks, which are worn
+ * or go into the backpack. Loot goes where it belongs ({@link #route}): ammo, meds and grenades to
+ * the free pockets first, then the rig, then the backpack; guns to a free gun key, then the
+ * backpack; everything else to the backpack, then the rig, then the pockets, so a raider with
+ * neither rig nor backpack can still carry what a crate holds (#176).
  * Rigs and backpacks carry their contents inside the item stack while unequipped. Whatever does
  * not fit anywhere is dropped at the player's feet in a raid and mailed to the stash mailbox
  * everywhere else, because outside a raid nobody can pick a dropped item up again.
@@ -44,7 +46,7 @@ public final class CarryService {
     public static final int MELEE_SLOT = 2;
     /** Hotbar keys 1-2: guns only. */
     public static final List<Integer> GUN_KEYS = List.of(0, 1);
-    /** Hotbar keys 4-8: ammo, meds, grenades and keys, the things a fight reaches for. */
+    /** Hotbar keys 4-8, the pockets: anything that is not a gun, armour or a rig or backpack (#176). */
     public static final List<Integer> QUICK_KEYS = List.of(3, 4, 5, 6, 7);
     public static final int RIG_START = 9;
     public static final int RIG_MAX = 9;
@@ -116,21 +118,20 @@ public final class CarryService {
 
     // ------------------------------------------------------------------ zone rules (#10)
 
-    /** What a quick key (4-8) holds: what a fight reaches for. */
+    /** What a fight reaches for: these go to the pockets (keys 4-8) first. */
     private static boolean quick(Category category) {
-        return category == Category.AMMO || category == Category.MEDICAL || category == Category.THROWABLE
-                || category == Category.KEY;
+        return category == Category.AMMO || category == Category.MEDICAL || category == Category.THROWABLE;
     }
 
-    /** Guns, armour and rigs or backpacks are too big for a rig pouch. */
+    /** Guns, armour and rigs or backpacks are too big for a pocket or a rig pouch. */
     private static boolean bulky(Category category) {
         return category == Category.WEAPON || category.isGear();
     }
 
     /**
      * Why {@code stack} may not be put into carry cell {@code slot} (0..35), or null when it may. Keys
-     * 1-2 take guns only, key 3 the melee weapon only, keys 4-8 ammo, meds, grenades and keys, key 9
-     * nothing (the terminal), the rig no guns, armour, rigs or backpacks; the backpack takes anything
+     * 1-2 take guns only, key 3 the melee weapon only, key 9 nothing (the terminal), the pockets (keys
+     * 4-8) and the rig no guns, armour, rigs or backpacks; the backpack takes anything
      * but a melee weapon. A stack that is not a Craftov item goes only where anything goes.
      */
     public @Nullable String refusal(@Nullable ItemStack stack, int slot) {
@@ -154,8 +155,9 @@ public final class CarryService {
         if (GUN_KEYS.contains(slot)) {
             return category == Category.WEAPON ? null : "1、2 号键只放枪械";
         }
-        if (QUICK_KEYS.contains(slot)) {
-            return category != null && quick(category) ? null : "4–8 号键只放弹药、医疗品、投掷物和钥匙";
+        if (QUICK_KEYS.contains(slot) && category != null && bulky(category)) {
+            return "口袋（4–8 号键）放不下" + category.displayName()
+                    + (category == Category.WEAPON ? "，枪放在 1、2 号键或背包" : "，请穿上或放进背包");
         }
         if (isRigSlot(slot) && category != null && bulky(category)) {
             return "胸挂放不下" + category.displayName() + "，请放进背包";
@@ -188,9 +190,9 @@ public final class CarryService {
 
     /**
      * The cells (0..35) that {@code stack} is put into, in order, for a player with this much rig and
-     * backpack: ammo, meds and grenades to the quick keys, then the rig, then the backpack; keys the
-     * same but the backpack first; guns to the gun keys, then the backpack; anything else to the
-     * backpack, then the rig. Every cell listed accepts the stack ({@link #refusal}). With
+     * backpack: ammo, meds and grenades to the pockets, then the rig, then the backpack; guns to the
+     * gun keys, then the backpack; armour, rigs and backpacks to the backpack only; anything else
+     * (keys too) to the backpack, then the rig, then the pockets. Every cell listed accepts the stack ({@link #refusal}). With
      * {@code avoid} >= 0 that cell is left out: loot never lands in the slot the player holds, or the
      * gun in their hands would turn into whatever they just picked up.
      */
@@ -212,10 +214,6 @@ public final class CarryService {
         if (category == Category.WEAPON) {
             out.addAll(GUN_KEYS);
             out.addAll(packCells);
-        } else if (category == Category.KEY) {
-            out.addAll(packCells);
-            out.addAll(rigCells);
-            out.addAll(QUICK_KEYS);
         } else if (category != null && quick(category)) {
             out.addAll(QUICK_KEYS);
             out.addAll(rigCells);
@@ -225,14 +223,29 @@ public final class CarryService {
         } else {
             out.addAll(packCells);
             out.addAll(rigCells);
+            out.addAll(QUICK_KEYS);
         }
         out.remove(Integer.valueOf(avoid));
         return out;
     }
 
-    /** {@link #route} for what the player wears now. */
+    /**
+     * {@link #route} for what the player wears now. Loot stays out of the held slot, except a gun
+     * when that slot is an empty gun key: nothing in hand turns into it, and with the other gun key
+     * taken and no backpack cell free, a gun just dropped from the hand could otherwise not be
+     * picked up again until the player switched slots (#180). It is tried last there.
+     */
     public List<Integer> route(Player player, @Nullable ItemStack stack, boolean looting) {
-        return route(stack, rigCapacity(player), backpackCapacity(player), looting ? player.getInventory().getHeldItemSlot() : -1);
+        int held = player.getInventory().getHeldItemSlot();
+        List<Integer> out = route(stack, rigCapacity(player), backpackCapacity(player), looting ? held : -1);
+        ItemStack inHand = player.getInventory().getItem(held);
+        ItemDef def = items.defOf(stack);
+        if (looting && GUN_KEYS.contains(held) && (inHand == null || inHand.isEmpty())
+                && def != null && def.category() == Category.WEAPON) {
+            out = new ArrayList<>(out);
+            out.add(held);
+        }
+        return out;
     }
 
     private static List<Integer> usableSlots(int rig, int pack) {

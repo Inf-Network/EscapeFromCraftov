@@ -30,7 +30,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Operators and their skills (sneak + F in a raid). */
+/**
+ * Operators and their skills (sneak + F in a raid, or on the private range).
+ *
+ * <p>On the range an operator can be tried out: one picked there ({@link #select}) is the player's
+ * only while they stay on the range, and their own choice is what they have again on leaving. The
+ * skill works there too, on the range's targets (the recon's sonar marks the standing silhouettes,
+ * the engineer's shield stops rounds), on a cooldown of its own: the raid's carries on untouched, and
+ * the range's is shortened ({@code range.skill-cooldown-multiplier}) and forgotten on leaving, with
+ * any sprint still running.
+ */
 public final class OperatorService {
 
     public static final Map<String, OperatorDef> OPERATORS = new LinkedHashMap<>();
@@ -49,29 +58,67 @@ public final class OperatorService {
     private final CraftovPlugin plugin;
     private final Map<UUID, Long> cooldownUntil = new HashMap<>();
     private final Map<UUID, Long> sprintUntil = new HashMap<>();
+    /** The operator being tried on the range, and the range's own skill cooldown. */
+    private final Map<UUID, String> trial = new HashMap<>();
+    private final Map<UUID, Long> rangeCooldownUntil = new HashMap<>();
 
     public OperatorService(CraftovPlugin plugin) {
         this.plugin = plugin;
     }
 
+    /** The player's operator: on the range the one being tried there, if any. */
     public OperatorDef of(Player player) {
+        String tried = trial.get(player.getUniqueId());
+        if (tried != null && plugin.range().isIn(player)) {
+            return OPERATORS.get(tried);
+        }
+        return chosen(player);
+    }
+
+    /** The operator the player picked in the lobby, whatever they are trying on the range. */
+    public OperatorDef chosen(Player player) {
         OperatorDef def = OPERATORS.get(plugin.profiles().get(player).operator);
         return def == null ? OPERATORS.get("vanguard") : def;
     }
 
+    /** Picks an operator: the player's own in the lobby, on the range one to try there only. */
     public void select(Player player, String id) {
         if (!OPERATORS.containsKey(id)) {
             return;
         }
+        OperatorDef def = OPERATORS.get(id);
+        if (plugin.range().isIn(player)) {
+            OperatorDef own = chosen(player);
+            if (own.id().equals(id)) {
+                trial.remove(player.getUniqueId());
+            } else {
+                trial.put(player.getUniqueId(), id);
+            }
+            Notify.ok(player, "靶场试用干员 <" + def.color() + ">" + def.name() + " <muted>(" + def.role() + ") · 离开靶场后仍是 "
+                    + own.name());
+            return;
+        }
         plugin.profiles().get(player).operator = id;
         plugin.profiles().markDirty(player.getUniqueId());
-        OperatorDef def = OPERATORS.get(id);
         Text.send(player, "<muted>已选择干员 <" + def.color() + ">" + def.name() + " <muted>(" + def.role() + ")");
     }
 
     public int cooldownLeft(Player player) {
-        long until = cooldownUntil.getOrDefault(player.getUniqueId(), 0L);
+        Map<UUID, Long> cooldowns = plugin.range().isIn(player) ? rangeCooldownUntil : cooldownUntil;
+        long until = cooldowns.getOrDefault(player.getUniqueId(), 0L);
         return (int) Math.max(0, (until - Bukkit.getCurrentTick() + 19) / 20);
+    }
+
+    /**
+     * The player left the range (RangeService): the operator tried there, the range's cooldown and a
+     * sprint begun there are dropped, so nothing of it reaches the lobby or the next raid.
+     */
+    public void leftRange(Player player) {
+        trial.remove(player.getUniqueId());
+        rangeCooldownUntil.remove(player.getUniqueId());
+        if (sprintUntil.remove(player.getUniqueId()) != null) {
+            plugin.health().forceSpeedUpdate(player);
+        }
     }
 
     // ------------------------------------------------------------------ passives
@@ -106,12 +153,13 @@ public final class OperatorService {
 
     // ------------------------------------------------------------------ active skill
 
-    /** Sneak+F (SwapKeyService reads the key), or the skill button in the terminal. */
+    /** Sneak+F (SwapKeyService reads the key), or the skill button in the terminal (on the range, the rack). */
     public void activate(Player player) {
+        boolean range = plugin.range().isIn(player);
         RaidPlayer rp = plugin.raids().session(player);
         Raid raid = plugin.raids().raidOf(player);
-        if (rp == null || raid == null || rp.state != RaidPlayer.State.ALIVE) {
-            Notify.hint(player, "技能只能在行动中使用");
+        if (!range && (rp == null || raid == null || rp.state != RaidPlayer.State.ALIVE)) {
+            Notify.hint(player, "技能只能在行动中或靶场里使用");
             return;
         }
         int left = cooldownLeft(player);
@@ -122,15 +170,78 @@ public final class OperatorService {
         OperatorDef def = of(player);
         switch (def.id()) {
             case "vanguard" -> sprint(player);
-            case "medic" -> pulse(player, raid, rp);
-            case "recon" -> sonar(player, raid, rp);
+            case "medic" -> pulse(player, range ? List.of(player) : mates(player, raid, rp, 8));
+            case "recon" -> sonar(player, range ? List.of(player) : squad(raid, rp), range ? rangeTargets(player) : enemies(player, rp));
             case "engineer" -> shield(player);
             default -> {
                 return;
             }
         }
-        cooldownUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + def.cooldownSeconds() * 20L);
+        long cooldown = def.cooldownSeconds() * 20L;
+        if (range) {
+            double scale = plugin.getConfig().getDouble("range.skill-cooldown-multiplier", 0.25);
+            rangeCooldownUntil.put(player.getUniqueId(), Bukkit.getCurrentTick() + Math.max(0, Math.round(cooldown * scale)));
+        } else {
+            cooldownUntil.put(player.getUniqueId(), (long) Bukkit.getCurrentTick() + cooldown);
+        }
         Notify.info(player, "<" + def.color() + ">技能 · " + def.skillName());
+    }
+
+    /** The player's squad in the raid, alive, here and within {@code radius} blocks (the player too). */
+    private List<Player> mates(Player player, Raid raid, RaidPlayer rp, double radius) {
+        List<Player> out = new ArrayList<>();
+        for (RaidPlayer mate : raid.squadOf(rp)) {
+            Player p = Bukkit.getPlayer(mate.uuid);
+            if (p == null || mate.state != RaidPlayer.State.ALIVE || p.getWorld() != player.getWorld()
+                    || p.getLocation().distanceSquared(player.getLocation()) > radius * radius) {
+                continue;
+            }
+            out.add(p);
+        }
+        return out;
+    }
+
+    /** The player's squad in the raid, online. */
+    private List<Player> squad(Raid raid, RaidPlayer rp) {
+        List<Player> out = new ArrayList<>();
+        for (RaidPlayer mate : raid.squadOf(rp)) {
+            Player p = Bukkit.getPlayer(mate.uuid);
+            if (p != null) {
+                out.add(p);
+            }
+        }
+        return out;
+    }
+
+    /** The range's standing silhouettes within the sonar's 45 blocks. */
+    private List<LivingEntity> rangeTargets(Player player) {
+        List<LivingEntity> out = new ArrayList<>();
+        for (LivingEntity target : plugin.range().targets().standing(player)) {
+            if (target.getWorld() == player.getWorld() && target.getLocation().distanceSquared(player.getLocation()) <= 45 * 45) {
+                out.add(target);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Everything within 45 blocks a raider's sonar marks: soldiers, enemy players, and the stand-ins
+     * of disconnected enemies (which show up as the enemy would, or they would give themselves away).
+     */
+    private List<LivingEntity> enemies(Player player, RaidPlayer rp) {
+        List<LivingEntity> out = new ArrayList<>();
+        for (LivingEntity entity : player.getWorld().getNearbyLivingEntities(player.getLocation(), 45)) {
+            if (entity == player || entity.isDead()) {
+                continue;
+            }
+            RaidPlayer standsFor = plugin.raids().standInOwner(entity);
+            if (plugin.ai().isAi(entity)
+                    || (entity instanceof Player other && plugin.raids().isInRaid(other) && !plugin.raids().sameSquad(player, other))
+                    || (standsFor != null && standsFor.squad != rp.squad)) {
+                out.add(entity);
+            }
+        }
+        return out;
     }
 
     private void sprint(Player player) {
@@ -141,14 +252,9 @@ public final class OperatorService {
         Bukkit.getScheduler().runTaskLater(plugin, () -> plugin.health().forceSpeedUpdate(player), 161L);
     }
 
-    private void pulse(Player player, Raid raid, RaidPlayer rp) {
+    private void pulse(Player player, List<Player> healed) {
         player.getWorld().playSound(player.getLocation(), "craftov:skill.heal", SoundCategory.PLAYERS, 1.2f, 1f);
-        for (RaidPlayer mate : raid.squadOf(rp)) {
-            Player p = Bukkit.getPlayer(mate.uuid);
-            if (p == null || mate.state != RaidPlayer.State.ALIVE || p.getWorld() != player.getWorld()
-                    || p.getLocation().distanceSquared(player.getLocation()) > 64) {
-                continue;
-            }
+        for (Player p : healed) {
             plugin.health().heal(p, 30);
             plugin.health().cure(p, Injury.LIGHT_BLEED);
             plugin.health().cure(p, Injury.HEAVY_BLEED);
@@ -165,28 +271,10 @@ public final class OperatorService {
         }
     }
 
-    private void sonar(Player player, Raid raid, RaidPlayer rp) {
+    private void sonar(Player player, List<Player> viewers, List<LivingEntity> found) {
         player.getWorld().playSound(player.getLocation(), "craftov:skill.sonar", SoundCategory.PLAYERS, 1.5f, 1f);
-        List<Player> viewers = new ArrayList<>();
-        for (RaidPlayer mate : raid.squadOf(rp)) {
-            Player p = Bukkit.getPlayer(mate.uuid);
-            if (p != null) {
-                viewers.add(p);
-            }
-        }
         int marked = 0;
-        for (LivingEntity entity : player.getWorld().getNearbyLivingEntities(player.getLocation(), 45)) {
-            if (entity == player || entity.isDead()) {
-                continue;
-            }
-            RaidPlayer standsFor = plugin.raids().standInOwner(entity);
-            // A disconnected enemy's stand-in shows up like the enemy would, or it would give itself away.
-            boolean enemy = plugin.ai().isAi(entity)
-                    || (entity instanceof Player other && plugin.raids().isInRaid(other) && !plugin.raids().sameSquad(player, other))
-                    || (standsFor != null && standsFor.squad != rp.squad);
-            if (!enemy) {
-                continue;
-            }
+        for (LivingEntity entity : found) {
             marked++;
             TextDisplay marker = entity.getWorld().spawn(entity.getLocation().add(0, entity.getHeight() + 0.6, 0), TextDisplay.class, d -> {
                 d.text(Text.mm("<danger><b>◆</b>"));

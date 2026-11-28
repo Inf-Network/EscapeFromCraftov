@@ -29,8 +29,8 @@ import java.util.function.Predicate;
  * lead by a body width (two against a sprinting player). The client cannot be made to draw the present
  * or to report its own hits, so the server looks back instead.
  *
- * <p>Every tick this records the hitbox of every living thing in a raid world (the last
- * {@link #SAMPLES} ticks, with the time each was taken), and a player's shot is tested against the boxes
+ * <p>Every tick this records the hitbox of every living thing in a raid world and on the range (the
+ * last {@link #SAMPLES} ticks, with the time each was taken), and a player's shot is tested against the boxes
  * as they were {@code ping + combat.lag-compensation.extra-ms} ago, at most {@code max-ms}, blended
  * between the two samples either side. The ping Paper reports is the round trip, which already covers
  * both legs; the extra (200 ms by default) covers the client's smoothing, which trails the updates by
@@ -120,15 +120,24 @@ public final class HitboxHistory {
         long now = System.nanoTime();
         int tick = Bukkit.getCurrentTick();
         for (Raid raid : plugin.raids().raids()) {
-            for (LivingEntity entity : raid.world.getLivingEntities()) {
-                if (entity instanceof ArmorStand || entity.isDead()) {
-                    continue;
-                }
-                tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track()).add(raid.world, pose(entity), now, tick);
-            }
+            record(raid.world, now, tick);
+        }
+        // The range's moving targets are drawn behind where they are, as a soldier is.
+        World range = plugin.range().world();
+        if (range != null) {
+            record(range, now, tick);
         }
         if (tick % 20 == 0) {
             tracks.values().removeIf(track -> tick - track.lastTick > SAMPLES);
+        }
+    }
+
+    private void record(World world, long now, int tick) {
+        for (LivingEntity entity : world.getLivingEntities()) {
+            if (entity instanceof ArmorStand || entity.isDead()) {
+                continue;
+            }
+            tracks.computeIfAbsent(entity.getUniqueId(), id -> new Track()).add(world, pose(entity), now, tick);
         }
     }
 

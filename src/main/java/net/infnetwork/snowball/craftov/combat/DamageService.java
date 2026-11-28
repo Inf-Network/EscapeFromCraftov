@@ -505,7 +505,8 @@ public final class DamageService implements Listener {
     /**
      * What a hit just did, from the victim's state {@code before} it and now. A raid player is
      * downed (standing before, crawling now) or killed (active before, dead now); a hit on someone
-     * already crawling is a plain hit unless it finishes them. Anyone else is killed when dead.
+     * already crawling is a plain hit unless it finishes them. A range silhouette is downed when the
+     * hit made it fall. Anyone else is killed when dead.
      */
     private Outcome outcome(LivingEntity victim, RaidPlayer.@Nullable State before) {
         RaidPlayer rp = before != null && victim instanceof Player player ? plugin.raids().session(player) : null;
@@ -514,6 +515,9 @@ public final class DamageService implements Listener {
                 return Outcome.KILLED;
             }
             return rp.state == RaidPlayer.State.DOWNED && before == RaidPlayer.State.ALIVE ? Outcome.DOWNED : Outcome.HIT;
+        }
+        if (plugin.range().targets().knockedDownNow(victim)) {
+            return Outcome.DOWNED; // a range silhouette shot down: it falls as a player would be knocked down
         }
         return victim.isDead() || victim.getHealth() <= 0 ? Outcome.KILLED : Outcome.HIT;
     }
@@ -601,7 +605,8 @@ public final class DamageService implements Listener {
                 || !eye.getWorld().equals(victim.getWorld())
                 || eye.distance(victim.getLocation().add(0, victim.getHeight() / 2, 0)) > spec.reach() + 0.8
                 || !plugin.raids().canAttack(player)
-                || !(victim instanceof Player || plugin.ai().isAi(victim) || plugin.raids().standInOwner(victim) != null)
+                || !(victim instanceof Player || plugin.ai().isAi(victim) || plugin.raids().standInOwner(victim) != null
+                        || plugin.lobby().isTarget(victim) && !plugin.range().targets().isDown(victim))
                 || (victim instanceof Player target && !plugin.raids().canBeShot(target))
                 || !plugin.raids().canDamage(player, victim)) {
             return;

@@ -43,6 +43,11 @@ public final class HudData {
         return plugin.raids().isInRaid(p);
     }
 
+    /** On the private range, where the lobby panel shows the operator's skill instead of the gear value. */
+    public boolean inRange(Player p) {
+        return plugin.range().isIn(p);
+    }
+
     public int hp(Player p) {
         return (int) Math.ceil(p.getHealth());
     }

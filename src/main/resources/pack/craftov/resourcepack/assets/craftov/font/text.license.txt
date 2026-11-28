@@ -1,0 +1,129 @@
+Copyright 2014-2019 Adobe (http://www.adobe.com/), with Reserved Font
+Name 'Source'. Source is a trademark of Adobe in the United States
+and/or other countries.
+
+GenSen Rounded (源泉圓體) by ButTaiwan, https://github.com/ButTaiwan/gensen-font,
+a Modified Version of Source Han Sans; its licence file carries only the notice above.
+JiangChengYuanTi (江城圆体) by LiuPeng (刘鹏), a Modified Version of GenSen Rounded with
+mainland Chinese glyph forms; its name table records no copyright notice.
+Craftov's text.ttf is a Modified Version of JiangChengYuanTi (tools/art/fonts/jiangcheng/SOURCE.txt).
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+JiangChengYuanTi 500W (江城圆体 500W), Version 3.6 2021/10/22, designer LiuPeng (刘鹏)
+License: SIL Open Font License 1.1 (OFL.txt). The name table carries the OFL notice (name IDs 13
+and 14) and records no copyright notice and no Reserved Font Name of its own.
+
+Lineage (OFL at every step; Adobe's notice heads OFL.txt):
+  Source Han Sans (思源黑体), Copyright 2014-2019 Adobe, Reserved Font Name 'Source'
+  -> GenSen Rounded (源泉圓體) v1.501 by ButTaiwan, https://github.com/ButTaiwan/gensen-font:
+     the strokes rounded, Taiwanese glyph forms
+  -> JiangChengYuanTi 3.6 by LiuPeng: GenSen Rounded with mainland Chinese glyph forms. The 500W
+     weight is GenSenRounded TW M: glyphs both share have identical outlines.
+
+Source: package/江城圆体 500W.ttf, sha256 8e7cc1282823e4d94b416f7ca16a35712d3e2f13c3e240243967ae665b77ec4e
+  in the npm package https://registry.npmjs.org/@fontpkg/jiang-cheng-yuan-ti/-/jiang-cheng-yuan-ti-3.6.0.tgz
+  registry integrity sha512-TTzSoKRg3V/ReEJV8NGQrcOLHlp5dts05Tj6nHE88d0KgkBuEAkBSMZckQP7tzKc0W0QWZBDLh3r17xdpzFu6w==
+  The package ships the five weights unmodified: its 300W is byte-identical to the copy in
+  Inf-Network/backrooms-ng, its 500W to the one in Marigold1122/Necobridge. The author's own
+  release is a cloud-drive download from https://www.maoken.com/freefonts/4916.html (OFL 1.1).
+Licence text: GenSen Rounded's, with the lineage added below Adobe's notice
+  https://raw.githubusercontent.com/ButTaiwan/gensen-font/1a2d61e1ea08d7948b86dd77262ae2e5585fa1d5/SIL_Open_Font_License_1.1.txt
+  sha256 d84b652ca46586043946969a33c1dbf5a43028440825ae744a325965bec4c8fb
+
+text.ttf is a Modified Version under the OFL, baked by tools/art/textfont.py: 7384 characters
+(printable ASCII, Latin-1, Greek, Cyrillic, kana, GB2312 and what the game prints, less block
+elements, box drawing and `|`), Chinese punctuation and kana mapped to their full-width (fwid)
+forms, every ideograph advancing exactly one em, no OpenType layout tables, tabular digits at
+667 units, the space at 444 units and a one-instruction prep program.
+sha256 0dfc665a179e1846de3501e73b5d3c77f3ed2e3a6d9194984b39bfaec9713e4e
+Not in the face (drawn by the game's own fonts): ⏱▮▯☠☢♛⚑⚡⛑✈✔✕✖✗✘✦❤

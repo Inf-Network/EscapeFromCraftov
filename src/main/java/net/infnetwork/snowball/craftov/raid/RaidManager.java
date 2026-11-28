@@ -258,14 +258,15 @@ public final class RaidManager implements Listener {
     }
 
     /**
-     * Players, the stand-ins of disconnected players, soldiers, drones and range dummies: the only
-     * living things that take hits in a raid or on the range. Anything else alive there is scenery
+     * Players, the stand-ins of disconnected players, soldiers, drones and range targets (not a range
+     * silhouette while it is down): the only living things that take hits in a raid or on the
+     * range. Anything else alive there is scenery
      * (corpses, kill-replay stand-ins, whatever decoration comes next), so a shot passes through it
      * instead of stopping in mid-air with a hit marker.
      */
     public boolean isCombatant(LivingEntity entity) {
         return entity instanceof Player || plugin.ai().isAi(entity) || plugin.drones().isDrone(entity)
-                || plugin.lobby().isTarget(entity) || standInOwner(entity) != null;
+                || plugin.lobby().isTarget(entity) && !plugin.range().targets().isDown(entity) || standInOwner(entity) != null;
     }
 
     /** Raid worlds and the private range: the only worlds where anyone can fire a gun. */

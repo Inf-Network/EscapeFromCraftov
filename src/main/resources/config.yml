@@ -718,6 +718,20 @@ training:
   # (s) between two courses started by one player: each start copies and loads a world.
   cooldown-seconds: 30
 
+# The private range (the lobby's range entrance): steel silhouettes, bullseyes and moving targets.
+range:
+  targets:
+    # Damage a silhouette takes before it falls, counted like a player's health without armour
+    # (1: it falls at any hit).
+    hp: 100
+    # (s) a fallen silhouette stays down this long, then stands up again with its health back.
+    down-seconds: 3
+  # Speeds (m/s) of the moving targets on the 10, 20 and 30 m rails; walking is 4.3, sprinting 5.6.
+  moving-speeds: [2.0, 3.5, 5.5]
+  # Operator skills tried on the range cool down this share of their raid cooldown; the range's
+  # cooldown is its own (the raid's is untouched) and is forgotten on leaving.
+  skill-cooldown-multiplier: 0.25
+
 season:
   # Changing the id starts a new season (everyone's pass progress resets).
   id: S1

@@ -766,7 +766,8 @@ SHIFT_NEG, SHIFT_POS, SCREEN_BASE = 0xF800, 0xF810, 0xE100
 
 
 def build_screens():
-    """Container skin, slot silhouettes, label lang strings and the craftov:ui font with the screens."""
+    """Container skin, slot silhouettes, label lang strings, the craftov:ui font with the screens and the
+    fonts of the screens' labels."""
     save(screens.generic_54(), os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png'))
     save(screens.inventory(), os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png'))
     for kind in ('helmet', 'chestplate', 'leggings', 'boots'):
@@ -794,8 +795,10 @@ def build_screens():
     # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
     # older keep theirs.
     all_screens = {**screens.SCREENS, **screens.skin_screens(load_knife_skins())}
+    label_rows = set()
+    label_chars = set()
     for i, (sid, make) in enumerate(all_screens.items()):
-        img, left, top = make()
+        img, left, top, labels = make()
         cp = chr(SCREEN_BASE + i)
         save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))
         # A menu title is drawn 6 px below the window top: ascent 13 puts the image's top row there.
@@ -803,7 +806,10 @@ def build_screens():
                           'ascent': 13 + top, 'chars': [cp]})
         box = img.getchannel('A').getbbox()
         # The client advances a bitmap glyph by its inked width plus one.
-        meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left}
+        meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left,
+                     'labels': [screen_label(label) for label in labels]}
+        label_rows.update(label['top'] for label in labels)
+        label_chars.update(''.join(label['text'] for label in labels))
     # U+E0FF: the black transition curtain (UiFont.blackout). A title draws at 4x and centres its text,
     # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
     save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
@@ -812,13 +818,37 @@ def build_screens():
     providers.append({'type': 'reference', 'id': 'minecraft:default'})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
+    # The labels' font (#192): the text font cut to their characters with whole-pixel advances, one
+    # font per row (label_font_id), each moving it down from the title's line to its row.
+    with open(os.path.join(CV, 'font', 'label.ttf'), 'wb') as f:
+        f.write(textfont.label_font(sorted(label_chars)))
+    for row in sorted(label_rows):
+        write_json(os.path.join(CV, 'font', label_font_id(row).split(':')[1] + '.json'),
+                   {'providers': [textfont.label_provider(row - TITLE_TOP), {'type': 'reference', 'id': 'minecraft:default'}]})
+
+
+# Where the client starts a container title's line, GUI px below the window's top.
+TITLE_TOP = 6
+
+
+def label_font_id(top):
+    """The font of the menu labels whose line starts `top` px below the window's top."""
+    return 'craftov:label_%s' % (str(top) if top >= 0 else 'n%d' % -top)
+
+
+def screen_label(label):
+    """A label as UiFont writes it into the title: its x, font, text, colour and whole-pixel width."""
+    color = label['color']
+    return {'x': label['x'], 'font': label_font_id(label['top']), 'text': label['text'],
+            'color': color if isinstance(color, str) else '#%02X%02X%02X' % color[:3],
+            'width': textfont.label_width(label['text'])}
 
 
 def build_fonts():
     """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
     lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
-    16 px bitmap (menu titles too, through craftov:ui; only the labels drawn into the menu art keep the
-    pixel font).
+    16 px bitmap (menu titles too, through craftov:ui, and the menus' labels in craftov:label_<row>,
+    build_screens).
     Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
     measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
     Whatever the face lacks falls through to vanilla's own providers, which the client keeps after
@@ -973,19 +1003,26 @@ TEXT, MUTED, DIM, ACCENT_HEX = palette.TEXT, palette.MUTED, palette.DIM, palette
 OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
 
 STAMINA_W = 100
+# The top-left column (info, skill, squad rows, the raid objective, alerts). The kill feed's rows reach
+# in from the right to x 144 on a 320 px wide GUI, so the column ends there: 4 px margin + 140.
+COLUMN_W = 140
+# The lobby's objective line, wider: no kill feed beside it.
+OBJECTIVE_W = 200
+# GUI px a text keeps clear of its panel's far edge (HudFont cuts a value that would come closer).
+TEXT_PAD = 3
 
 HUD_IMAGES = {
     'craftov/panel_vitals.png': lambda: hudart.panel(88, 38),
     'craftov/panel_weapon.png': lambda: hudart.panel(118, 38, side='right'),
-    'craftov/panel_skill.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
-    'craftov/panel_info.png': lambda: hudart.panel(132, 44),
-    'craftov/panel_mate.png': lambda: hudart.panel(132, 12, accent=rgb(palette.LINE)),
+    'craftov/panel_skill.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_info.png': lambda: hudart.panel(COLUMN_W, 44),
+    'craftov/panel_mate.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.LINE)),
     # The new-player guide's objective line: wide in the lobby, the squad rows' width in a raid, where
     # the kill feed's rows reach in from the right on a 320 px wide GUI.
-    'craftov/panel_objective.png': lambda: hudart.panel(200, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_objective.png': lambda: hudart.panel(OBJECTIVE_W, 12, accent=rgb(palette.ACCENT)),
     # The alert banner: one row per line of text, the rows after the first without the top edge.
-    'craftov/panel_alert.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
-    'craftov/panel_alert_more.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT), top=False),
+    'craftov/panel_alert.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_alert_more.png': lambda: hudart.panel(COLUMN_W, 12, accent=rgb(palette.ACCENT), top=False),
     # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
     'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
@@ -1012,19 +1049,21 @@ HUD_IMAGES = {
     **{'craftov/damage_%d.png' % i: (lambda i=i: hudart.damage_arc(i)) for i in range(8)},
     **{'craftov/crosshair/%d.png' % i: (lambda g=g: hudart.crosshair(g)) for i, g in enumerate(hudart.CROSSHAIR_GAPS)},
     'craftov/crosshair/%d.png' % len(hudart.CROSSHAIR_GAPS): lambda: hudart.dot_crosshair(),
-    'craftov/compass/n.png': lambda: hudart.glyph('N', rgb('#FF6B5B')),
-    'craftov/compass/s.png': lambda: hudart.glyph('S'),
-    'craftov/compass/e.png': lambda: hudart.glyph('E'),
-    'craftov/compass/w.png': lambda: hudart.glyph('W'),
-    'craftov/compass/ne.png': lambda: hudart.glyph('NE', scale=1),
-    'craftov/compass/nw.png': lambda: hudart.glyph('NW', scale=1),
-    'craftov/compass/se.png': lambda: hudart.glyph('SE', scale=1),
-    'craftov/compass/sw.png': lambda: hudart.glyph('SW', scale=1),
-    'craftov/compass/chain.png': lambda: hudart.tick(),
-    'craftov/compass/point.png': lambda: hudart.pointer(),
-    'craftov/compass/extract_open.png': lambda: hudart.diamond(rgb('#5BD16B')),
-    'craftov/compass/extract_closed.png': lambda: hudart.diamond(rgb('#8A8F98')),
-    'craftov/compass/objective.png': lambda: hudart.diamond(rgb(palette.ACCENT)),
+    'craftov/compass/n.png': lambda: hudart.compass_letter('N', rgb('#FF6B5B'), em=13),
+    'craftov/compass/s.png': lambda: hudart.compass_letter('S', em=13),
+    'craftov/compass/e.png': lambda: hudart.compass_letter('E', em=13),
+    'craftov/compass/w.png': lambda: hudart.compass_letter('W', em=13),
+    'craftov/compass/ne.png': lambda: hudart.compass_letter('NE'),
+    'craftov/compass/nw.png': lambda: hudart.compass_letter('NW'),
+    'craftov/compass/se.png': lambda: hudart.compass_letter('SE'),
+    'craftov/compass/sw.png': lambda: hudart.compass_letter('SW'),
+    # The compass draws everything at 1 / COMPASS_K (its letters are the text face at that many texels
+    # per GUI pixel), so the ticks and markers are their pixel art blown up by as much.
+    'craftov/compass/chain.png': lambda: hudart.compass_art(hudart.tick()),
+    'craftov/compass/point.png': lambda: hudart.compass_art(hudart.pointer()),
+    'craftov/compass/extract_open.png': lambda: hudart.compass_art(hudart.diamond(rgb('#5BD16B'))),
+    'craftov/compass/extract_closed.png': lambda: hudart.compass_art(hudart.diamond(rgb('#8A8F98'))),
+    'craftov/compass/objective.png': lambda: hudart.compass_art(hudart.diamond(rgb(palette.ACCENT))),
 }
 
 IN_RAID = {'1': {'first': 'craftov_in_raid', 'second': 'true', 'operation': '=='}}
@@ -1078,14 +1117,51 @@ def alert_layout(*conditions):
 
 
 def hud_font_widths(sheet, rows):
-    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows): how far the HUD's
-    text font moves after each character at scale 1 (craftov_text), listing only those that do not
-    advance as far as a hanzi. A bitmap glyph advances by its inked width plus one."""
+    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows and cuts what would
+    not fit its panel): how far the HUD's text font moves after each character at scale 1
+    (craftov_text), listing only those that do not advance as far as a hanzi (a bitmap glyph advances
+    by its inked width plus one), and the room each placeholder has (hud_budgets)."""
     adv = textfont.hud_advances(sheet, rows)
     default = adv['中']
     advances = {' ': 4}
     advances.update({ch: a for ch, a in adv.items() if a != default})
-    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances})
+    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances,
+                                                          'fit': hud_budgets(advances, default)})
+
+
+def hud_budgets(advances, default):
+    """The widest each placeholder's value may be (GUI px at scale 1), from the layouts below: the
+    panel's width, where the text starts and the fixed words around it, TEXT_PAD short of the far
+    edge (#192). HudFont cuts a longer value with "…"; for the extract line, the squad rows and the
+    objective the server cuts the name or goal and keeps the distance or state after it."""
+    def w(text):
+        return sum(advances.get(ch, default) for ch in text)
+
+    with open(os.path.join(RES, 'config.yml'), encoding='utf-8') as f:
+        tiers = [t['name'] for t in yaml.safe_load(f)['tiers'].values()]
+    room = COLUMN_W - 6 - TEXT_PAD              # a top-left panel's text starts at x 6
+    operator = 4 * default                      # operator names are two hanzi; four fit
+    tier = max(w(t) for t in tiers)
+    states = (' 倒地', ' 阵亡', ' 已撤离', ' 断线', ' ❤100')
+    return {
+        'craftov_map': room - w(' · ') - tier, 'craftov_tier': tier,
+        'craftov_nearest': room - w('撤离 '),
+        'craftov_value_short': COLUMN_W - 72 - TEXT_PAD - w('◈ '),
+        'craftov_operator': operator,
+        'craftov_skill': min(room - operator - w(' · '), room - w('技能 ')),
+        **{'craftov_mate_%d' % i: room for i in (1, 2)},
+        'craftov_mate_name': room - max(w(t) for t in states),
+        'craftov_objective': OBJECTIVE_W - 6 - TEXT_PAD, 'craftov_objective_raid': room,
+        **{'craftov_alert_%d' % i: COLUMN_W - 12 for i in range(1, ALERT_LINES + 1)},
+        # The balance in the big digits (twice the size) from x 18; HudData.moneyText shortens it.
+        'craftov_money_big': (COLUMN_W - 18 - TEXT_PAD) // 2,
+        # The weapon panel: the name across the top, right-aligned at 114; the ammo type or hint right of
+        # the big magazine digits (right-aligned at 40); the fire mode right of "／" and the reserve.
+        'craftov_weapon': 114 - TEXT_PAD, 'craftov_ammo_type': 114 - 44, 'craftov_weapon_hint': 114 - 44,
+        'craftov_firemode': 114 - (42 + w('／9999') + TEXT_PAD),
+        **{'craftov_feed_%d' % i: 170 for i in FEED_LINES},
+        'craftov_prompt': 200 - 2 * TEXT_PAD,
+    }
 
 
 def numbered(items):
@@ -1363,7 +1439,9 @@ def build_betterhud():
     compass = {'craftov_compass': {
         'type': 'circle', 'default': False,
         'file': {d: {'name': 'craftov/compass/' + d + '.png'} for d in ('n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'chain')},
-        'scale': 1.0, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
+        # BetterHud ignores a picture's own scale while apply-opacity is on, so the whole compass is drawn
+        # at 1 / COMPASS_K and every picture in it is COMPASS_K texels per GUI pixel (#192).
+        'scale': 1 / hudart.COMPASS_K, 'scale-equation': '1 - t/30', 'length': 20, 'space': 2,
         'gui': {'x': 50, 'y': 0}, 'pixel': {'x': 0, 'y': 6}, 'apply-opacity': True,
     }}
     compass['craftov_compass']['file']['point'] = {'name': 'craftov/compass/point.png', 'y': -6}

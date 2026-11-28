@@ -152,27 +152,38 @@ def knock_marker(color, size=19, ring=2, inner=3, outer=5):
     return img
 
 
-GLYPHS = {
-    'N': ["X...X", "XX..X", "X.X.X", "X..XX", "X...X"],
-    'S': [".XXXX", "X....", ".XXX.", "....X", "XXXX."],
-    'E': ["XXXXX", "X....", "XXXX.", "X....", "XXXXX"],
-    'W': ["X...X", "X...X", "X.X.X", "XX.XX", "X...X"],
-}
+# Compass letters (#192): the rounded text face of the rest of the HUD, drawn at COMPASS_K texels per
+# GUI pixel and shown at 1 / COMPASS_K (the compass's scale), like the HUD's text sheet.
+# The cardinals are a 13 px em (9.6 px capitals, the old pixel letters were 10), the others the HUD
+# text's 9 px em. A soft dark rim keeps them readable against a bright sky.
+COMPASS_K = 4
+COMPASS_COLOR = (235, 230, 215, 255)
 
 
-def glyph(text, color=(235, 230, 215, 255), scale=2):
-    width = sum(len(GLYPHS[ch][0]) + 1 for ch in text) - 1
-    img = Image.new('RGBA', (width * scale, 5 * scale), (0, 0, 0, 0))
-    ox = 0
-    for ch in text:
-        g = GLYPHS[ch]
-        for y, row in enumerate(g):
-            for x, v in enumerate(row):
-                if v == 'X':
-                    for dx in range(scale):
-                        for dy in range(scale):
-                            img.putpixel(((ox + x) * scale + dx, y * scale + dy), color)
-        ox += len(g[0]) + 1
+def compass_art(img, k=COMPASS_K):
+    """A compass picture drawn at one texel per GUI pixel, each pixel blown up to k x k."""
+    return img.resize((img.width * k, img.height * k), Image.NEAREST)
+
+
+def compass_letter(text, color=COMPASS_COLOR, em=9, k=COMPASS_K):
+    from PIL import ImageFilter, ImageFont
+    import textfont
+    font = ImageFont.truetype(textfont.OUT, em * k)
+    left, top, right, bottom = font.getbbox(text, anchor='ls')
+    pad = k
+    # Whole GUI pixels on both sides, so the client scales the picture by exactly 1 / k.
+    w = -(-(right - left + 2 * pad) // k) * k
+    h = -(-(bottom - top + 2 * pad) // k) * k
+    mask = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(mask).text(((w - (right - left)) // 2 - left, (h - (bottom - top)) // 2 - top), text,
+                              font=font, fill=255, anchor='ls')
+    rim = mask.filter(ImageFilter.MaxFilter(2 * (k // 2) + 1)).point(lambda a: a * 110 // 255)
+    img = Image.new('RGBA', (w, h), (12, 14, 18, 0))
+    img.putalpha(rim)
+    img.alpha_composite(Image.composite(Image.new('RGBA', (w, h), color), Image.new('RGBA', (w, h), (0, 0, 0, 0)), mask))
+    # BetterHud trims fully transparent edges; two all but invisible corners keep the whole-pixel size.
+    img.putpixel((0, 0), (12, 14, 18, 1))
+    img.putpixel((w - 1, h - 1), (12, 14, 18, 1))
     return img
 
 

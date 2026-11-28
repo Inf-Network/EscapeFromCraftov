@@ -9,13 +9,17 @@ would vanish on a dark window, so those lang strings are emptied and the labels 
 Designed screens sit on top of the skin: each is one image drawn as a glyph of the craftov:ui font in
 the menu title (gui/UiFont.java), so it lines up with the window at every GUI scale. Images cover the
 window from its top-left corner; their slot wells stay transparent so items always show.
+
+No text is drawn in the pixel font any more (#192): a designed screen's labels go into the menu title
+as text in the rounded text font (Screen.label, textfont.label_font), and the two vanilla textures
+are drawn at textfont.TEXTURE_K texels per GUI pixel with their labels baked in from the same face.
 """
 import os
 
 from PIL import Image, ImageDraw
 
 import palette as P
-import pixelfont
+import textfont
 from px import rgb, mix
 
 W = 176                       # every chest-style window is this wide
@@ -67,9 +71,35 @@ def hatched_well(img, x, y, size=18):
     img.alpha_composite(tile, (x + 1, y + 1))
 
 
-def label(img, x, y, text, color=P.MUTED):
-    """Pixel-font text with its cell top at y (glyph ink starts one row lower)."""
-    pixelfont.draw(img, x, y, text, rgb(color))
+def label_top(y):
+    """Where a label's line starts for a label placed at y (the old pixel-font cell top, whose ink
+    started a row lower): a hanzi's ink takes the 9 rows from there."""
+    return y + 1
+
+
+def width(text):
+    """GUI px a label takes (textfont.label_advance)."""
+    return textfont.label_width(text)
+
+
+class Labels:
+    """Labels of a vanilla texture, collected while its art is drawn at one texel per GUI pixel and
+    baked in when it is scaled up (hd)."""
+
+    def __init__(self):
+        self.items = []
+
+    def __call__(self, x, y, text, color=P.MUTED, size=textfont.SIZE):
+        self.items.append((x, label_top(y), text, color, size))
+
+
+def hd(img, labels, k=textfont.TEXTURE_K):
+    """The art scaled up k times (every pixel a k x k block, so it stays exact on screen) with the
+    labels drawn in the text font at k texels per GUI pixel."""
+    big = img.resize((img.width * k, img.height * k), Image.NEAREST)
+    for x, top, text, color, size in labels.items:
+        textfont.draw_label(big, x, top, text, color if isinstance(color, tuple) else rgb(color), k, size)
+    return big
 
 
 def title_marker(img, x, y):
@@ -91,21 +121,15 @@ def zone_well(img, x, y, zone):
     ImageDraw.Draw(img).line([x + 1, y + 1, x + 16, y + 1], fill=mix(rgb(P.BG), c, 0.45))
 
 
-# 3x5 digits for the key caps under the hotbar.
-DIGITS = {
-    '1': ['010', '110', '010', '010', '111'], '2': ['110', '001', '010', '100', '111'],
-    '3': ['110', '001', '010', '001', '110'], '4': ['101', '101', '111', '001', '001'],
-    '5': ['111', '100', '110', '001', '110'], '6': ['011', '100', '110', '101', '010'],
-    '7': ['111', '001', '010', '010', '010'], '8': ['010', '101', '010', '101', '010'],
-    '9': ['010', '101', '011', '001', '110'],
-}
+# The key caps under the hotbar: digits of the text font at a 6 px em (5 px tall), centred on the
+# well, in the 5 rows the old 3x5 pixel digits took.
+KEYCAP_SIZE = 6
 
 
-def digit(img, x, y, ch, color):
-    for r, row in enumerate(DIGITS[ch]):
-        for c, bit in enumerate(row):
-            if bit == '1':
-                img.putpixel((x + c, y + r), color)
+def keycap(labels, x, y, ch, color):
+    """The digit `ch` with its ink on rows y..y+4, centred on column x + 1 (the old digit's middle)."""
+    w = textfont.label_advance(ch) * KEYCAP_SIZE / textfont.SIZE
+    labels(x + 1.5 - w / 2, y - 1, ch, color, KEYCAP_SIZE)
 
 
 def hint(img, x, y, kind):
@@ -136,7 +160,7 @@ def hint(img, x, y, kind):
 HOTBAR_HINTS = ['gun', 'gun', 'knife', 'pocket', 'pocket', 'pocket', 'pocket', 'pocket', 'terminal']
 
 
-def carry_rows(img, top, hotbar_y, keycaps_y):
+def carry_rows(img, labels, top, hotbar_y, keycaps_y):
     """The rig row, the two backpack rows and the hotbar of the player's own inventory, as laid out in
     both the inventory screen and the lower half of every chest window: zone-tinted wells, a tag in the
     zone's colour in the left margin, hints in the empty hotbar wells and the key caps under them."""
@@ -147,22 +171,22 @@ def carry_rows(img, top, hotbar_y, keycaps_y):
         zone_well(img, 7 + c * 18, top + 36, 'pack')
         well(img, 7 + c * 18, hotbar_y)
         hint(img, 7 + c * 18, hotbar_y, HOTBAR_HINTS[c])
-        digit(img, 7 + c * 18 + 8, keycaps_y, str(c + 1), rgb(P.DIM) if c not in (2, 8) else mix(rgb(P.DIM), rgb(P.BG), 0.4))
+        keycap(labels, 7 + c * 18 + 8, keycaps_y, str(c + 1), P.DIM if c not in (2, 8) else mix(rgb(P.DIM), rgb(P.BG), 0.4))
     d.rectangle([3, top + 1, 4, top + 16], fill=rgb(P.ZONE_RIG))
     d.rectangle([3, top + 19, 4, top + 52], fill=rgb(P.ZONE_PACK))
     d.rectangle([3, hotbar_y + 1, 4, hotbar_y + 16], fill=rgb(P.ACCENT))
 
 
-def legend(img, x, y, vertical=False):
+def legend(img, labels, x, y, vertical=False):
     """Swatches naming the two carry zones, side by side or one under the other."""
     d = ImageDraw.Draw(img)
     for zone, text in (('rig', '胸挂'), ('pack', '背包')):
         d.rectangle([x, y + 2, x + 4, y + 7], fill=rgb(ZONES[zone]))
-        label(img, x + 7, y - 1, text)
+        labels(x + 7, y - 1, text)
         if vertical:
             y += 11
         else:
-            x += 7 + pixelfont.width(text) + 6
+            x += 7 + width(text) + 6
 
 
 # ---------------------------------------------------------------- vanilla container textures
@@ -182,11 +206,14 @@ def generic_54():
     window(low, 0, -4, W - 1, 95)
     d = ImageDraw.Draw(low)
     d.line([1, 0, W - 2, 0], fill=rgb(P.LINE))
-    label(low, 8, 1, '随身物品')
-    legend(low, 100, 2)
-    carry_rows(low, 13, 71, 90)
+    labels = Labels()
+    lower = Labels()
+    lower(8, 1, '随身物品')
+    legend(low, lower, 100, 2)
+    carry_rows(low, lower, 13, 71, 90)
     img.paste(low, (0, 126))
-    return img
+    labels.items = [(x, top + 126, text, color, size) for x, top, text, color, size in lower.items]
+    return hd(img, labels)
 
 
 INFO_CELLS = {0: (153, 27), 1: (97, 17), 2: (115, 17), 3: (97, 35), 4: (115, 35)}
@@ -210,12 +237,13 @@ def inventory():
     # The info cells on a raised plate under a label; the result cell sits apart like vanilla's.
     d.rectangle([94, 14, 135, 54], fill=rgb(P.RAISED), outline=rgb(P.LINE))
     d.rectangle([150, 24, 173, 47], fill=rgb(P.RAISED), outline=rgb(P.LINE))
-    label(img, 95, 2, '随身概况')
+    labels = Labels()
+    labels(95, 2, '随身概况')
     for x, y in INFO_CELLS.values():
         well(img, x, y)
-    legend(img, 140, 57, vertical=True)
-    carry_rows(img, 83, 141, 159)
-    return img
+    legend(img, labels, 140, 57, vertical=True)
+    carry_rows(img, labels, 83, 141, 159)
+    return hd(img, labels)
 
 
 def silhouette(kind):
@@ -251,13 +279,14 @@ LANG = {'container.inventory': '', 'container.crafting': '', 'mount.onboard': ''
 
 # ---------------------------------------------------------------- designed screens
 
-def chest_window(rows):
-    """A full chest window image (top part and inventory) as the client lays it out."""
+def chest_window(rows, k=textfont.TEXTURE_K):
+    """A full chest window image (top part and inventory) as the client lays it out, at k texels per
+    GUI pixel."""
     top = generic_54()
     h = rows * 18 + 17
-    img = Image.new('RGBA', (W, h + 96), (0, 0, 0, 0))
-    img.paste(top.crop((0, 0, W, h)), (0, 0))
-    img.paste(top.crop((0, 126, W, 222)), (0, h))
+    img = Image.new('RGBA', (W * k, (h + 96) * k), (0, 0, 0, 0))
+    img.paste(top.crop((0, 0, W * k, h * k)), (0, 0))
+    img.paste(top.crop((0, 126 * k, W * k, 222 * k)), (0, h * k))
     return img
 
 
@@ -290,10 +319,17 @@ class Screen:
 
     def __init__(self, rows):
         self.rows = rows
+        self.labels = []
         self.img = Image.new('RGBA', (W, rows * 18 + 17), (0, 0, 0, 0))
         window(self.img, 0, 0, W - 1, rows * 18 + 17 + 3)
         title_marker(self.img, 4, 6)
         self.d = ImageDraw.Draw(self.img)
+
+    def label(self, x, y, text, color=P.MUTED):
+        """Text at x (GUI px from the window's left edge), placed as the pixel font's cell at y was: it
+        is drawn by the client, in the menu title (build.py, UiFont)."""
+        self.labels.append({'x': x, 'top': label_top(y), 'text': text, 'color': color})
+        return self
 
     def wells(self, indices):
         for i in indices:
@@ -306,7 +342,7 @@ class Screen:
         self.d.rectangle([x0, y0 + 2, x1, y1 - 2], fill=rgb(P.RAISED))
         self.d.line([x0, y1 - 2, x1, y1 - 2], fill=rgb(P.LINE))
         self.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tick))
-        label(self.img, x0 + 5, y0 + 4, text, color)
+        self.label(x0 + 5, y0 + 4, text, color)
         return self
 
     def big(self, r0, c0, r1, c1, lines, icon=None, accent=True, color=P.ACCENT):
@@ -324,7 +360,7 @@ class Screen:
             self.img.alpha_composite(icon, ((x0 + x1 + 1 - icon.width) // 2, y))
             y += icon.height + 3
         for line in lines:
-            label(self.img, (x0 + x1 + 1 - pixelfont.width(line)) // 2, y - 1, line, color if accent else P.TEXT)
+            self.label((x0 + x1 + 1 - width(line)) // 2, y - 1, line, color if accent else P.TEXT)
             y += 11
         return self
 
@@ -352,7 +388,8 @@ class Screen:
         return self
 
     def done(self):
-        return self.img, 0, 0
+        """(image, px it reaches left of the window, px above it, labels)."""
+        return self.img, 0, 0, self.labels
 
 
 def mini(kind):
@@ -483,11 +520,11 @@ def loot_screen(size):
         if size < 36:
             last = size - 1
             x0, y0 = slot_xy((last // 6) * 9 + last % 6)
-            label(s.img, 9, y0 + 20, '容量 %d 格' % size, P.DIM)
+            s.label(9, y0 + 20, '容量 %d 格' % size, P.DIM)
         # Gear column and secure container, set off from the container by a divider.
         x = 7 + 6 * 18
         s.d.line([x + 1, 4, x + 1, 6 * 18 + 16], fill=rgb(P.LINE))
-        label(s.img, x + 5, 4, '我的装备', P.MUTED)
+        s.label(x + 5, 4, '我的装备', P.MUTED)
         for i, kind in zip((6, 15, 24, 33), ('helmet', 'chestplate', 'leggings', 'boots')):
             cx, cy = slot_xy(i)
             if kind == 'leggings':
@@ -551,7 +588,7 @@ def settlement_screen(extracted):
         s.d.rectangle([x0, y0 + 1, x1, y1 - 1], fill=mix(rgb(P.RAISED), rgb(tone), 0.18))
         s.d.line([x0, y1 - 1, x1, y1 - 1], fill=rgb(tone))
         s.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tone))
-        label(s.img, x0 + 5, y0 + 4, '撤离成功' if extracted else '行动失败', tone)
+        s.label(x0 + 5, y0 + 4, '撤离成功' if extracted else '行动失败', tone)
         s.wells([8])
         s.wells(slots(1, 0, 1, 8))
         s.band(2, 0, 8, '带出的物品 · 价值最高的 10 件' if extracted else '损失的物品 · 价值最高的 10 件', tick=tone)
@@ -594,7 +631,7 @@ def skin_screen(knife, knives, skins):
         s.d.ellipse([x0 + 4, y0 + 6, x1 - 4, y0 + 38], fill=mix(rgb('#11151A'), rgb(P.RAISED), 0.9))
         s.img.alpha_composite(sprite, ((x0 + x1 + 1 - sprite.width) // 2, y0 + 5))
         s.d.line([x0 + 5, y0 + 40, x1 - 5, y0 + 40], fill=rgb(P.LINE))
-        label(s.img, (x0 + x1 + 1 - pixelfont.width(name)) // 2, y0 + 42, name, P.TEXT if i else P.MUTED)
+        s.label((x0 + x1 + 1 - width(name)) // 2, y0 + 42, name, P.TEXT if i else P.MUTED)
         s.wells([36 + c0, 37 + c0])
     s.toolbar(5).wells([45, 49, 53])
     return s.done()
@@ -626,7 +663,7 @@ def training_settlement_screen(done):
         s.d.rectangle([x0, y0 + 1, x1, y1 - 1], fill=mix(rgb(P.RAISED), rgb(tone), 0.18))
         s.d.line([x0, y1 - 1, x1, y1 - 1], fill=rgb(tone))
         s.d.rectangle([x0, y0 + 4, x0 + 1, y1 - 5], fill=rgb(tone))
-        label(s.img, x0 + 5, y0 + 4, '训练完成' if done else '训练中断', tone)
+        s.label(x0 + 5, y0 + 4, '训练完成' if done else '训练中断', tone)
         s.wells([8])
         s.wells(slots(1, 0, 1, 2))
         s.band(2, 0, 8, '训练课程 · 完成的会发光', tick=tone)
@@ -644,7 +681,7 @@ def blackout():
     return Image.new('RGBA', (64, 16), (0, 0, 0, 255))
 
 
-# Screen id -> function returning (image, pixels it reaches left of the window, pixels above it).
+# Screen id -> function returning (image, pixels it reaches left of the window, pixels above it, labels).
 SCREENS = {
     'main': main_screen,
     'deploy': deploy_screen,

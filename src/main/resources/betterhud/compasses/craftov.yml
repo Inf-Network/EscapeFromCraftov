@@ -30,7 +30,7 @@ craftov_compass:
         name: craftov/compass/extract_closed.png
       objective:
         name: craftov/compass/objective.png
-  scale: 1.0
+  scale: 0.25
   scale-equation: 1 - t/30
   length: 20
   space: 2

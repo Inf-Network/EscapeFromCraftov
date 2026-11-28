@@ -261,6 +261,12 @@ public final class HudData {
         return 0;
     }
 
+    /** The lobby panel's balance in the big digits: in full, or 12.3万 when the full figure would not fit. */
+    public static String moneyText(long money) {
+        String full = Text.money(money);
+        return HudFont.width(full) <= HudFont.budget("craftov_money_big", Integer.MAX_VALUE) ? full : Text.moneyShort(money);
+    }
+
     /** "北门检查站 右前 85m" for the nearest usable extract. */
     public String nearestExtract(Player p) {
         Raid raid = plugin.raids().raidOf(p);
@@ -283,7 +289,9 @@ public final class HudData {
             return "暂无可用撤离点";
         }
         int bearing = bearing(p, best.center);
-        return best.def.name() + " " + (bearing < 0 ? "" : BEARINGS[bearing] + " ") + (int) Math.sqrt(bestD) + "m";
+        // A long name is cut, never the direction and distance after it.
+        return HudFont.fit(best.def.name(), " " + (bearing < 0 ? "" : BEARINGS[bearing] + " ") + (int) Math.sqrt(bestD) + "m",
+                HudFont.budget("craftov_nearest", Integer.MAX_VALUE));
     }
 
     /**
@@ -295,7 +303,8 @@ public final class HudData {
         if (objective == null) {
             return "";
         }
-        StringBuilder sb = new StringBuilder(Style.tag(Style.ACCENT) + "目标 " + Style.tag(Style.TEXT) + objective.text());
+        String head = Style.tag(Style.ACCENT) + "目标 " + Style.tag(Style.TEXT) + objective.text();
+        StringBuilder sb = new StringBuilder();
         Location target = objective.target();
         if (target != null && target.getWorld() == p.getWorld()) {
             double dx = target.getX() - p.getX();
@@ -303,7 +312,7 @@ public final class HudData {
             int distance = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
             sb.append(Style.tag(Style.MUTED)).append(" · ");
             if (distance <= 3) {
-                // The raid's panel is the squad rows' 132 px (TrainingService.Lesson#objective).
+                // The raid's panel is the squad rows' width (TrainingService.Lesson#objective).
                 sb.append(inRaid(p) ? "到了" : "就在这里");
             } else if (inRaid(p)) {
                 sb.append(distance).append('m');
@@ -311,7 +320,9 @@ public final class HudData {
                 sb.append(BEARINGS[bearing(p, target)]).append(' ').append(distance).append('m');
             }
         }
-        return sb.toString();
+        // The goal's text is cut, never the distance; in a raid the line is on the narrower squad panel.
+        return HudFont.fit(head, sb.toString(), HudFont.budget(inRaid(p) ? "craftov_objective_raid" : "craftov_objective",
+                Integer.MAX_VALUE));
     }
 
     /** An arrow pointing at the target from where the player looks, or "" in another world. */
@@ -474,7 +485,8 @@ public final class HudData {
                 continue;
             }
             Player online = org.bukkit.Bukkit.getPlayer(mate.uuid);
-            String name = Text.escape(mate.name);
+            // Long names are cut so the state after them always shows on the squad row.
+            String name = HudFont.fit(Text.escape(mate.name), HudFont.budget("craftov_mate_name", Integer.MAX_VALUE));
             out[i++] = switch (mate.state) {
                 case ALIVE -> Style.tag(Style.TEXT) + name + " " + Style.tag(online != null && online.getHealth() <= 30 ? Style.DANGER : Style.OK)
                         + "❤" + (online == null ? 0 : (int) Math.ceil(online.getHealth()));

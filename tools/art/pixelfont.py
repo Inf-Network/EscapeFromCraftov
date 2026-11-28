@@ -1,4 +1,6 @@
-"""The 10 px pixel font for the HUD, menu titles and the text baked into screen art.
+"""The 10 px pixel font: once the HUD's, the menu titles' and the screen art's (now the rounded text
+font, textfont.py), still the HUD's glyphs for the few symbols that face lacks and the ring numbers
+on the range's paper targets.
 
 Chinese glyphs drawn from Unifont (16 px) at any height other than 8 or 16 GUI pixels are resampled
 by the client: at the HUD's old 0.45-0.65 text scales, and even at 8 px on GUI scale 3, rows and

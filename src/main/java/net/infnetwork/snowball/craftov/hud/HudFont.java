@@ -15,14 +15,18 @@ import java.util.Map;
 
 /**
  * How wide the BetterHud HUD's text font draws a line, in GUI pixels, so the server can break the
- * alert banner into rows that fit its panel (#178). The advances come from ui/hud_font.json, which
- * tools/art/build.py writes from the same glyphs it gives BetterHud: every character not listed
- * advances {@code default} pixels (a hanzi's), and anything inside {@code <...>} is a colour tag.
+ * alert banner into rows that fit its panel (#178) and cut any placeholder down to the room its panel
+ * has for it (#192). The advances come from ui/hud_font.json, which tools/art/build.py writes from the
+ * same glyphs it gives BetterHud: every character not listed advances {@code default} pixels (a
+ * hanzi's), and anything inside {@code <...>} is a colour tag. Its {@code fit} section gives, per
+ * placeholder, the widest the value may be: the build measures it from the layout (panel width, where
+ * the text starts, the fixed words around it).
  */
 public final class HudFont {
 
     private static final int DEFAULT_ADVANCE = 11;
     private static final Map<Integer, Integer> ADVANCES = new HashMap<>();
+    private static final Map<String, Integer> BUDGETS = new HashMap<>();
     private static int fallback = DEFAULT_ADVANCE;
 
     static {
@@ -33,6 +37,12 @@ public final class HudFont {
                 JsonObject advances = root.getAsJsonObject("advances");
                 for (String ch : advances.keySet()) {
                     ADVANCES.put(ch.codePointAt(0), advances.get(ch).getAsInt());
+                }
+                JsonObject fit = root.getAsJsonObject("fit");
+                if (fit != null) {
+                    for (String name : fit.keySet()) {
+                        BUDGETS.put(name, fit.get(name).getAsInt());
+                    }
                 }
             }
         } catch (Exception ignored) {
@@ -45,6 +55,24 @@ public final class HudFont {
 
     public static int advance(int codePoint) {
         return ADVANCES.getOrDefault(codePoint, fallback);
+    }
+
+    /** The room the layout leaves for a placeholder's value, in px, or {@code fallback} if it sets none. */
+    public static int budget(String placeholder, int fallback) {
+        return BUDGETS.getOrDefault(placeholder, fallback);
+    }
+
+    /** The text as it is, or cut to end in "…" within {@code maxWidth} px. */
+    public static String fit(String text, int maxWidth) {
+        return width(text) <= maxWidth ? text : ellipsis(text, maxWidth);
+    }
+
+    /**
+     * {@code head + tail} within {@code maxWidth} px, cutting only the head (a name), so the tail (the
+     * direction and distance, a state) always shows.
+     */
+    public static String fit(String head, String tail, int maxWidth) {
+        return fit(head, Math.max(0, maxWidth - width(tail))) + tail;
     }
 
     /** The drawn width of BetterHud text, tags left out. */

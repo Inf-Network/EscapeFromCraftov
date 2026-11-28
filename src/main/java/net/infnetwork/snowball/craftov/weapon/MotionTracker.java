@@ -789,11 +789,16 @@ final class MotionTracker {
         return Math.min(1.0, speed / Math.max(0.06, walkPace(player)));
     }
 
-    /** Forgets the last position: the next tick measures from wherever the player lands. */
+    /**
+     * Forgets the last position: the next tick measures from wherever the player lands. A move the
+     * client sent before the teleport goes too, or the tick end after it would start the track from
+     * where the player was before.
+     */
     void reset(Player player) {
         Track track = tracks.get(player.getUniqueId());
         if (track != null) {
             track.fresh = true;
+            track.claimSet = false;
         }
     }
 

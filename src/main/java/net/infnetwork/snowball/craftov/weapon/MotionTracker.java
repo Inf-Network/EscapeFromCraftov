@@ -148,7 +148,10 @@ final class MotionTracker {
         double speed;
         /** Slowing down to a stop at the last reading (see {@link #stopping}). */
         boolean stopping;
-        /** The speed the player is judged by: the measured one, or while {@link #careful} the highest since it began. */
+        /**
+         * The speed the player is judged by: the measured one, while {@link #careful} the highest since
+         * it began, and while {@link #clockless} about the highest of the last {@link #STOP_WINDOW} readings.
+         */
         double judged;
         /** Judged carefully at the last reading, after movement held back (see {@link #HELD_TICKS}). */
         boolean careful;
@@ -381,10 +384,16 @@ final class MotionTracker {
         if (careful) {
             track.heldSpeed = Math.max(track.heldSpeed, Math.max(speed, recent));
         }
-        double judged = careful ? track.heldSpeed : speed;
-        boolean fast = groundRun(player) && judged > RUN_RATIO * pace;
+        // Without the client's clock a stop cannot be told from movement held back (a client could
+        // drop its tick ends for just that, issue #171): judged by the highest recent reading, never
+        // as stopping. The second highest of them and this one: packets bunched up over server ticks
+        // put a single reading well over the pace now and then, which would cost a steady sneak.
+        double judged = careful ? track.heldSpeed : track.clockless ? secondHighest(track.speeds, speed) : speed;
+        // A run ends as it reads: that only takes the sprint cone off, and a run kept on for the
+        // readings after a sprint would hold it on a gun brought up out of one.
+        boolean fast = groundRun(player) && (careful ? judged : speed) > RUN_RATIO * pace;
         track.fastTicks = fast ? track.fastTicks + 1 : 0;
-        track.stopping = !careful && speed < track.speed && speed < STOP_RATIO * Math.min(recent, walk);
+        track.stopping = !careful && !track.clockless && speed < track.speed && speed < STOP_RATIO * Math.min(recent, walk);
         track.speed = speed;
         track.judged = judged;
         track.careful = careful;
@@ -630,7 +639,8 @@ final class MotionTracker {
      * both what it was in the last few ticks and the walking pace the player may go at now. That is
      * letting go of the keys or pressing the opposite one (a counter-strafe), not slowing down to aim
      * or under a heavier load, and not speeding up again after a turn the other way. Never while the
-     * player is judged carefully after holding back movement (see {@link #HELD_TICKS}).
+     * player is judged carefully after holding back movement (see {@link #HELD_TICKS}), nor while they
+     * are measured without the client's clock.
      */
     boolean stopping(Player player) {
         Track track = tracks.get(player.getUniqueId());
@@ -665,6 +675,21 @@ final class MotionTracker {
         double median = pairs[pairs.length / 2];
         double mean = sum / WINDOW;
         return longest > HELD_BACK * track.pace && median <= 0.5 * mean ? mean : median;
+    }
+
+    /** The second highest of {@code readings} and {@code now}. */
+    private static double secondHighest(double[] readings, double now) {
+        double first = now;
+        double second = 0;
+        for (double r : readings) {
+            if (r > first) {
+                second = first;
+                first = r;
+            } else if (r > second) {
+                second = r;
+            }
+        }
+        return second;
     }
 
     /** Blocks per tick the player's movement-speed attribute walks right now. */

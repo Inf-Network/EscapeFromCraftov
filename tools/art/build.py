@@ -958,11 +958,10 @@ def build_pack_meta():
 
 # ---------------------------------------------------------------- BetterHud
 #
-# HUD composition (#6, #66). Text comes in two fonts, each drawn so one font pixel is a whole number of
-# GUI pixels, which keeps it sharp at every GUI scale: craftov_pixel, the 10 px pixel font (pixelfont.py)
-# at scale 1.0 for every label and anything Chinese, and craftov_font, vanilla's ASCII bitmap, at 1.0
-# (2 px per font pixel) for the big numbers. Unifont at the old 0.45-0.75 scales resampled each Chinese
-# glyph to a fraction of its size, which is what blurred the HUD at GUI scale 3.
+# HUD composition (#6, #66, #182). All text is the rounded text font of chat and item names (textfont.py,
+# 江城圆体), baked for BetterHud into a bitmap at 4 texels per GUI pixel (textfont.hud_sheet): craftov_text
+# at scale 1/4 (a 9 px em, as in chat) for every label and at 1/2 for the big numbers. The 10 px pixel
+# font it replaces was sharp but blocky; 4 texels per GUI pixel keep the outlines even at GUI scale 2-4.
 #
 # Placement: the vitals sit in the bottom-left band below the chat (the chat's bottom line is 40 px above
 # the screen edge) and stop short of the offhand slot even on a 426 px wide GUI (1280x720 at scale 3);
@@ -1043,19 +1042,24 @@ def cond(*pairs):
     return out
 
 
-def text(pattern, x, y, scale=1.0, align='left', conditions=None, font='craftov_pixel'):
-    """A HUD text. Only scale 1.0 (and 0.5 for craftov_font) keeps font pixels whole on screen."""
-    if font == 'craftov_pixel':
-        y += pixelfont.ASCENT  # BetterHud puts a bitmap glyph's ascent row at y; this makes y the cell top
-    t = {'name': font, 'pattern': pattern, 'x': x, 'y': y, 'scale': scale, 'align': align, 'outline': True}
+HUD_SCALE = 1 / textfont.HUD_OVERSAMPLE
+
+
+def text(pattern, x, y, scale=1, align='left', conditions=None):
+    """A HUD text in craftov_text; scale 2 is the big numbers. y is the top of the 12 px cell."""
+    # BetterHud puts a glyph's ascent row at y, and does not scale the ascent with the text.
+    y += textfont.HUD_ASCENT
+    t = {'name': 'craftov_text', 'pattern': pattern, 'x': x, 'y': y, 'scale': HUD_SCALE * scale, 'align': align,
+         'outline': True}
     if conditions:
         t['conditions'] = conditions
     return t
 
 
 def big(pattern, x, y, align='left', conditions=None):
-    """Big ASCII digits: vanilla's 8 px bitmap at 2 GUI px per font pixel."""
-    return text(pattern, x, y, 1.0, align, conditions, font='craftov_font')
+    """Big numbers: the text font at twice the size, 3 px up so the digits' ink (13 px tall) takes the
+    rows the old 14 px bitmap digits did and clears the row under them."""
+    return text(pattern, x, y - 3, 2, align, conditions)
 
 
 def image(name, x, y, conditions=None):
@@ -1076,16 +1080,14 @@ def alert_layout(*conditions):
             'conditions': cond(('craftov_has_alert_1', 'true'), *conditions)}
 
 
-def hud_font_widths():
+def hud_font_widths(sheet, rows):
     """ui/hud_font.json for HudFont (the server breaks the alert banner into rows): how far the HUD's
-    text font moves after each character, listing only those that do not advance as far as a hanzi."""
-    _, rows, _ = pixelfont.load()
-    default = pixelfont.advance('中')
-    advances = {' ': pixelfont.advance(' ')}
-    for row in rows:
-        for ch in row:
-            if ch != '\0' and pixelfont.advance(ch) != default:
-                advances[ch] = pixelfont.advance(ch)
+    text font moves after each character at scale 1 (craftov_text), listing only those that do not
+    advance as far as a hanzi. A bitmap glyph advances by its inked width plus one."""
+    adv = textfont.hud_advances(sheet, rows)
+    default = adv['中']
+    advances = {' ': 4}
+    advances.update({ch: a for ch, a in adv.items() if a != default})
     write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances})
 
 
@@ -1097,23 +1099,20 @@ def c(hex_color):
     return '<' + hex_color + '>'
 
 
-def hud_pixel_font():
-    """The 10 px pixel font (pixelfont.py) as a BetterHud bitmap text font: one sheet of full rows plus
-    the last, shorter row on its own, since every row of a sheet must hold the same number of glyphs.
-    BetterHud draws a bitmap font at scale x cell height, so at scale 1.0 one font pixel is one GUI pixel."""
-    sheet, rows, _ = pixelfont.load()
-    full = [r for r in rows if '\0' not in r]
+def hud_text_font(sheet, rows):
+    """The text font's HUD bitmap (textfont.hud_sheet) as a BetterHud bitmap text font: one sheet of
+    full rows plus the last, shorter row on its own, since every row of a sheet must hold the same
+    number of glyphs."""
+    cw, chh = textfont.HUD_CELL_W * textfont.HUD_OVERSAMPLE, textfont.HUD_CELL_H * textfont.HUD_OVERSAMPLE
+    full = [r for r in rows if len(r) == textfont.HUD_COLUMNS]
     last = rows[len(full):]
     chars = {}
-    body = sheet.crop((0, 0, sheet.width, len(full) * pixelfont.CELL_H))
-    save(body, os.path.join(BH, 'assets', 'craftov', 'pixel', '0.png'))
-    chars['1'] = {'file': 'craftov/pixel/0.png', 'codepoints': full, 'ascent': pixelfont.ASCENT}
+    save(sheet.crop((0, 0, sheet.width, len(full) * chh)), os.path.join(BH, 'assets', 'craftov', 'text', '0.png'))
+    chars['1'] = {'file': 'craftov/text/0.png', 'codepoints': full, 'ascent': textfont.HUD_ASCENT}
     for i, row in enumerate(last, 1):
-        row = row.rstrip('\0')
-        y = (len(full) + i - 1) * pixelfont.CELL_H
-        save(sheet.crop((0, y, len(row) * pixelfont.CELL_W, y + pixelfont.CELL_H)),
-             os.path.join(BH, 'assets', 'craftov', 'pixel', '%d.png' % i))
-        chars[str(i + 1)] = {'file': 'craftov/pixel/%d.png' % i, 'codepoints': [row], 'ascent': pixelfont.ASCENT}
+        y = (len(full) + i - 1) * chh
+        save(sheet.crop((0, y, len(row) * cw, y + chh)), os.path.join(BH, 'assets', 'craftov', 'text', '%d.png' % i))
+        chars[str(i + 1)] = {'file': 'craftov/text/%d.png' % i, 'codepoints': [row], 'ascent': textfont.HUD_ASCENT}
     return {'type': 'bitmap', 'chars': chars}
 
 
@@ -1151,11 +1150,9 @@ def build_betterhud():
             images['craftov_bp_%s_%d' % (part, state)] = {'type': 'single', 'file': 'craftov/body/%s_%d.png' % (part, state)}
     write_text(os.path.join(BH, 'images', 'craftov.yml'), yaml.safe_dump(images, allow_unicode=True, sort_keys=False))
 
-    # craftov_font: vanilla's ASCII bitmap, used only at scale 1.0 for big digits. BetterHud bundles
-    # unifont glyphs only for the listed languages, so "china" keeps a stray CJK character from being tofu.
-    hud_font_widths()
-    texts = {'craftov_font': {'merge-default-bitmap': True, 'use-unifont': True, 'include': ['china']},
-             'craftov_pixel': hud_pixel_font()}
+    sheet, rows = textfont.hud_sheet()
+    hud_font_widths(sheet, rows)
+    texts = {'craftov_text': hud_text_font(sheet, rows)}
     write_text(os.path.join(BH, 'texts', 'craftov.yml'), yaml.safe_dump(texts, allow_unicode=True, sort_keys=False))
 
     hp_colour = [(OK_HEX, 0), (ACCENT_HEX, 1), (DANGER_HEX, 2)]

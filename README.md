@@ -2,7 +2,7 @@
 
 Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战斗 · 撤离」玩法：带装备进入地图，搜索物资、对抗 AI 敌兵与其他小队，活着撤离后战利品才真正属于你。
 
-地图、物品、界面、贴图与枪声以外的音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。物品名、说明、聊天和原版界面里的字用圆体 [江城圆体 500W](tools/art/fonts/jiangcheng/SOURCE.txt)（JiangChengYuanTi，SIL OFL 1.1，队里的 backrooms-ng 用的是同一款的 300W；这里用较粗的 500W，笔画在界面尺寸 2 下也不会断）的平滑轮廓绘制（大厅、靶场名牌的标题和伤害数字用同一款的 700W 粗体，`<heavy>` 标签；原版的 `<b>` 加粗会把细笔画错开 1 像素画两遍，近看是重影），`tools/art/textfont.py` 把游戏用得到的字（GB2312 全部汉字、插件里出现的字符，以及西欧拉丁字母、希腊字母、西里尔字母和假名）裁成子集放进 `tools/art/fonts/jiangcheng/`；菜单标题、界面贴图上的标签和 HUD 用 10 像素点阵字体 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）绘制，`tools/art/pixelfont.py` 把用到的字形烘焙进 `tools/art/fonts/`。枪声来自真实枪械的 CC0 录音（[The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) 和两段 Freesound 消音枪录音，见「许可」），由 `tools/art/gunsamples.py` 切出单发并处理成各距离的版本。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（CC0 公有领域，[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)）转换而来：用到的网格原样放在 `tools/art/src/quaternius/`（来源和 SHA-256 见同目录的 `sources.json`）。每把枪和 4 倍、8 倍镜由 `tools/art/meshprim.py` 用任意角度旋转的盒子拟合网格的每个部件，再按 `tools/art/guns/<枪>.yml` 补上真实的部件宽度、八棱柱的枪管和镜筒，以及手放的准星照门、拉机柄、快慢机、枪口装置；`tools/art/gunpaint.py` 给每个面画材质贴图并烘焙环境光遮蔽。第一人称用精模，换弹和拔枪帧用中模，第三人称、地面和 AI 用加宽的低模，`tools/art/gunbudget.py` 检查每把枪让客户端烘焙多少面。没有 `guns/<枪>.yml` 的枪会退回 `tools/art/meshvox.py` 的体素模型（`tools/art/voxguns/`）。
+地图、物品、界面、贴图与枪声以外的音效都是原创并由脚本程序化生成，不使用任何现有游戏的素材或名称。物品名、说明、聊天和原版界面里的字用圆体 [江城圆体 500W](tools/art/fonts/jiangcheng/SOURCE.txt)（JiangChengYuanTi，SIL OFL 1.1，队里的 backrooms-ng 用的是同一款的 300W；这里用较粗的 500W，笔画在界面尺寸 2 下也不会断）的平滑轮廓绘制（大厅、靶场名牌的标题和伤害数字用同一款的 700W 粗体，`<heavy>` 标签；原版的 `<b>` 加粗会把细笔画错开 1 像素画两遍，近看是重影），`tools/art/textfont.py` 把游戏用得到的字（GB2312 全部汉字、插件里出现的字符，以及西欧拉丁字母、希腊字母、西里尔字母和假名）裁成子集放进 `tools/art/fonts/jiangcheng/`；HUD 也用这款字体（烘焙成 4 倍分辨率的位图，见「HUD」）；菜单标题和界面贴图上的标签用 10 像素点阵字体 [Fusion Pixel Font](https://github.com/TakWolf/fusion-pixel-font)（SIL OFL 1.1）绘制，`tools/art/pixelfont.py` 把用到的字形烘焙进 `tools/art/fonts/`。枪声来自真实枪械的 CC0 录音（[The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) 和两段 Freesound 消音枪录音，见「许可」），由 `tools/art/gunsamples.py` 切出单发并处理成各距离的版本。枪械模型由 [Quaternius 的 Ultimate Gun Pack](https://quaternius.com/packs/ultimategun.html)（CC0 公有领域，[OpenGameArt 镜像](https://opengameart.org/content/low-poly-guns-pack)）转换而来：用到的网格原样放在 `tools/art/src/quaternius/`（来源和 SHA-256 见同目录的 `sources.json`）。每把枪和 4 倍、8 倍镜由 `tools/art/meshprim.py` 用任意角度旋转的盒子拟合网格的每个部件，再按 `tools/art/guns/<枪>.yml` 补上真实的部件宽度、八棱柱的枪管和镜筒，以及手放的准星照门、拉机柄、快慢机、枪口装置；`tools/art/gunpaint.py` 给每个面画材质贴图并烘焙环境光遮蔽。第一人称用精模，换弹和拔枪帧用中模，第三人称、地面和 AI 用加宽的低模，`tools/art/gunbudget.py` 检查每把枪让客户端烘焙多少面。没有 `guns/<枪>.yml` 的枪会退回 `tools/art/meshvox.py` 的体素模型（`tools/art/voxguns/`）。
 
 ## 一键开服（玩家输入 IP 即可游玩）
 
@@ -113,7 +113,7 @@ Craftov 是一个 Paper 1.21.11 插件，在 Minecraft 里实现「搜索 · 战
 | 对准倒地队友按住右键 | 救援 |
 | 快捷栏第 9 格 | 战术终端：伤势、安全箱、撤离点情报、小队状态、技能、放弃行动（倒地时安全箱、改枪台和技能锁定） |
 
-HUD（需要 BetterHud）的文字全部用 10 像素点阵字体按整数倍绘制，任何分辨率和界面尺寸下都清晰（大号数字用原版字体放大 2 倍）：
+HUD（需要 BetterHud）的文字全部用和聊天栏同一款江城圆体（每个汉字 9 像素宽；BetterHud 只能画位图字体，所以构建时按 4 倍分辨率把字形烘焙成位图，界面尺寸 2、4 下每个屏幕像素正好对应整数个字形像素，尺寸 3 下也不会断笔），大号数字（剩余时间、弹匣、资金）是同一款字体放大 2 倍；字体里没有的几个符号（❤ ✔ ⚠ 等）仍用点阵字形：
 
 - 左下（聊天栏下方、快捷栏左侧）：生命面板。人形图按部位显示出血和骨折，生命值（60 以下变琥珀色、30 以下变红）和血条，头盔和护甲的等级与耐久条，右上角是伤病图标（出血 / 大出血、骨折、止痛中）。
 - 快捷栏正上方（动作栏下面）：冲刺体力条，只在体力没满或正在冲刺时出现，琥珀色；跑空后还在喘气（恢复到能再冲刺之前）或过载不能冲刺时变红；倒地时不显示。

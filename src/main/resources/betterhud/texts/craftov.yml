@@ -1,13 +1,8 @@
-craftov_font:
-  merge-default-bitmap: true
-  use-unifont: true
-  include:
-  - china
-craftov_pixel:
+craftov_text:
   type: bitmap
   chars:
     '1':
-      file: craftov/pixel/0.png
+      file: craftov/text/0.png
       codepoints:
       - '!"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`'
       - abcdefghijklmnopqrstuvwxyz{|}~°±·×÷–—‘’“”•…‰※ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ←↑→↓↔↖↗↘↙
@@ -107,7 +102,7 @@ craftov_pixel:
       - 鹕鹚鹜鹤鹦鹫鹬鹭鹰鹱鹳鹾鹿麂麇麈麋麒麓麝麟麦麴麸麻麽麾黄黉黍黎黏黑黔默黛黜黝黠黢黥黩黯黹黻黼鼋鼎鼐鼓鼙鼠鼬鼯鼹鼻鼾齐齿龄龇龊龋龌
       ascent: 9
     '2':
-      file: craftov/pixel/1.png
+      file: craftov/text/1.png
       codepoints:
       - 龙龚龛龟龠！＂＃％＆＇（）＊＋，－．／０１２３４５６７８９：；＜＝＞？＠［＼］＾＿｀｛｜｝～
       ascent: 9

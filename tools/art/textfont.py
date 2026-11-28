@@ -1,8 +1,8 @@
 """The text font (#163): JiangChengYuanTi 500W (江城圆体, SIL Open Font License 1.1), the rounded face
 backrooms-ng draws its HUD and menu text in (it uses the 300W weight), for everything the client
 writes in its default font: item names and lore, menu buttons, chat, titles and the vanilla
-screens' labels. Menu titles, the labels drawn into the menu art and the HUD keep the 10 px pixel
-font (pixelfont.py).
+screens' labels, and, baked into a bitmap (hud_sheet), BetterHud's HUD (#182). Menu titles and the
+labels drawn into the menu art keep the 10 px pixel font (pixelfont.py).
 
 Lineage: Adobe's Source Han Sans (思源黑体) -> ButTaiwan's GenSen Rounded (源泉圓體), its strokes
 rounded, Taiwanese glyph forms -> LiuPeng's JiangChengYuanTi, the same outlines with the forms
@@ -327,6 +327,71 @@ def provider(file='craftov:text.ttf'):
     Unicode Font on."""
     return {'type': 'ttf', 'file': file, 'size': SIZE, 'oversample': OVERSAMPLE,
             'shift': [0, round(SHIFT, 4)], 'skip': '', 'filter': {'uniform': False}}
+
+
+
+# ---------------------------------------------------------------- the HUD's bitmap (#182)
+#
+# BetterHud draws text from bitmap fonts only, so the HUD gets the face baked into a sheet: HUD_OVERSAMPLE
+# texels per GUI pixel, cells HUD_CELL_W x HUD_CELL_H GUI pixels with the baseline HUD_ASCENT rows down,
+# the pixel font's cell, so layouts measured for it keep their rows. A layout draws it at scale
+# 1 / HUD_OVERSAMPLE (one em HUD_EM GUI px) and the big numbers at twice that. Like the text font in
+# chat, the client samples the sheet without filtering: 4 texels per GUI pixel fall evenly on screen
+# pixels at GUI scale 2 and 4, and at 3 the odd skipped texel does not show. Each glyph keeps its
+# left side bearing and the client advances it by its inked width plus one GUI pixel: hanzi step 9 px,
+# one less than the pixel font's, and Latin text is proportional. The few symbols the face lacks
+# (❤ ✔ ⚠ ...) are the pixel font's own, each pixel a block of texels.
+
+HUD_OVERSAMPLE = 4
+HUD_EM = 9           # GUI px per em, as the text font in chat
+HUD_CELL_W, HUD_CELL_H = 11, 12
+HUD_ASCENT = 9
+HUD_COLUMNS = 64
+
+
+def hud_sheet():
+    """(sheet, rows): the HUD's glyphs, white on transparent, over pixelfont's character set (so the
+    HUD can print everything it printed before), rows of HUD_COLUMNS characters."""
+    from PIL import Image, ImageDraw, ImageFont
+    k = HUD_OVERSAMPLE
+    cw, ch_, base = HUD_CELL_W * k, HUD_CELL_H * k, HUD_ASCENT * k
+    font = ImageFont.truetype(OUT, HUD_EM * k)
+    have = set(_cmap())
+    pixel_sheet, _, pixel_glyphs = pixelfont.load()
+    pixel_alpha = pixel_sheet.getchannel('A')
+    chars = [c for c in pixelfont.charset() if c in pixel_glyphs]
+    rows = [chars[i:i + HUD_COLUMNS] for i in range(0, len(chars), HUD_COLUMNS)]
+    sheet = Image.new('LA', (HUD_COLUMNS * cw, len(rows) * ch_), (255, 0))
+    for i, c in enumerate(chars):
+        x, y = (i % HUD_COLUMNS) * cw, (i // HUD_COLUMNS) * ch_
+        if ord(c) in have:
+            mask = Image.new('L', (cw, ch_), 0)
+            ImageDraw.Draw(mask).text((0, base), c, font=font, fill=255, anchor='ls')
+        else:
+            gx, gy, _ = pixel_glyphs[c]
+            cell = pixel_alpha.crop((gx, gy, gx + pixelfont.CELL_W, gy + pixelfont.CELL_H))
+            mask = cell.resize((pixelfont.CELL_W * k, pixelfont.CELL_H * k), Image.NEAREST).crop((0, 0, cw, ch_))
+        sheet.paste(Image.new('LA', (cw, ch_), (255, 255)), (x, y), mask)
+    return sheet.convert('RGBA'), [''.join(r) for r in rows]
+
+
+def hud_advances(sheet, rows):
+    """{char: GUI px the client moves after it} at the HUD's scale 1: the inked width in texels over
+    HUD_OVERSAMPLE, rounded, plus one, as the client advances any bitmap glyph."""
+    alpha = sheet.getchannel('A')
+    k = HUD_OVERSAMPLE
+    cw, chh = HUD_CELL_W * k, HUD_CELL_H * k
+    out = {}
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            box = alpha.crop((c * cw, r * chh, (c + 1) * cw, (r + 1) * chh)).getbbox()
+            out[ch] = int(0.5 + (box[2] if box else 0) / k) + 1
+    return out
+
+
+def _cmap():
+    from fontTools.ttLib import TTFont
+    return TTFont(OUT, lazy=True).getBestCmap()
 
 
 if __name__ == '__main__':

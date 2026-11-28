@@ -761,7 +761,7 @@ def build_ui():
 
 # craftov:ui font (gui/UiFont.java): its own key, so nothing clashes with the U+E000 glyphs CraftEngine
 # puts in minecraft:default. Shift characters move the pen (negative 2^k at U+F800+k, positive at
-# U+F810+k), screen backgrounds sit at U+E100 onwards, and the pixel font fills in the text.
+# U+F810+k), screen backgrounds sit at U+E100 onwards, and the text font fills in the text.
 SHIFT_NEG, SHIFT_POS, SCREEN_BASE = 0xF800, 0xF810, 0xE100
 
 
@@ -789,11 +789,7 @@ def build_screens():
         advances[chr(SHIFT_NEG + k)] = -(1 << k)
         advances[chr(SHIFT_POS + k)] = 1 << k
     providers = [{'type': 'space', 'advances': advances}]
-    sheet, rows, _ = pixelfont.load()
-    save(sheet, os.path.join(CV, 'textures', 'font', 'pixel10.png'))
-    # Ascent 8 puts the glyphs' ink where vanilla's own 8 px text starts.
-    providers.append({'type': 'bitmap', 'file': 'craftov:font/pixel10.png', 'height': pixelfont.CELL_H, 'ascent': 8,
-                      'chars': rows})
+    # The title text itself is the text font (#182): it falls through to minecraft:default below.
     meta = {}
     # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
     # older keep theirs.
@@ -812,7 +808,7 @@ def build_screens():
     # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
     save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
     providers.append({'type': 'bitmap', 'file': 'craftov:font/blackout.png', 'height': 192, 'ascent': 93, 'chars': ['']})
-    # Anything the pixel font lacks (a rare character in a player-made name) falls back to the game's font.
+    # The titles' text: the game's font, which is the rounded text font (build_fonts).
     providers.append({'type': 'reference', 'id': 'minecraft:default'})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
@@ -821,7 +817,8 @@ def build_screens():
 def build_fonts():
     """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
     lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
-    16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
+    16 px bitmap (menu titles too, through craftov:ui; only the labels drawn into the menu art keep the
+    pixel font).
     Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
     measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
     Whatever the face lacks falls through to vanilla's own providers, which the client keeps after

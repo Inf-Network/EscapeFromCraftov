@@ -1,7 +1,7 @@
 """The text font (#163): JiangChengYuanTi 500W (江城圆体, SIL Open Font License 1.1), the rounded face
 backrooms-ng draws its HUD and menu text in (it uses the 300W weight), for everything the client
-writes in its default font: item names and lore, menu buttons, chat, titles and the vanilla
-screens' labels, and, baked into a bitmap (hud_sheet), BetterHud's HUD (#182). Menu titles and the
+writes in its default font: item names and lore, menu buttons, chat, titles, menu titles and the
+vanilla screens' labels, and, baked into a bitmap (hud_sheet), BetterHud's HUD (#182). Only the
 labels drawn into the menu art keep the 10 px pixel font (pixelfont.py).
 
 Lineage: Adobe's Source Han Sans (思源黑体) -> ButTaiwan's GenSen Rounded (源泉圓體), its strokes

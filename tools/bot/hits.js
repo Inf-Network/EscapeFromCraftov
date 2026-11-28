@@ -110,15 +110,16 @@ async function soldier (tag, health) {
   return null
 }
 
-/** Puts the tagged soldier right in front of the bot and cuts it until `done` (or 6 tries). */
-async function cut (bot, tag, done) {
+/** Puts the tagged soldier right in front of the bot and cuts it at `height` of its height until `done` (or 6 tries). */
+async function cut (bot, tag, done, height = 0.56) {
   for (let n = 0; n < 6; n++) {
     await rcon(`execute as ${name} at @s run tp ${one(tag)} ^ ^ ^1.4 facing entity @s`)
     await sleep(400)
     const target = bot.nearestEntity(e => ['zombie', 'husk', 'drowned'].includes(e.name) && e.position.distanceTo(bot.entity.position) < 3)
     if (!target) continue
-    await bot.lookAt(target.position.offset(0, 1.1, 0), true)
-    await sleep(250)
+    await bot.lookAt(target.position.offset(0, target.height * height, 0), true)
+    // Long enough for the new aim to reach the server before the swing.
+    await sleep(600)
     bot.attack(target)
     await sleep(700)
     if (await done()) return true
@@ -173,9 +174,43 @@ async function cut (bot, tag, done) {
   if (alive) {
     const hp = async () => Number(((await rcon(`data get entity ${one(alive)} Health`)).match(/(-?[\d.]+)f/) || [])[1])
     const full = await hp()
-    wounded = await cut(bot, alive, async () => (await hp()) < full)
+    // Low on the body: a cut to the head would now finish it (#183).
+    wounded = await cut(bot, alive, async () => (await hp()) < full, 0.35)
   }
   check('cut one more soldier without killing it', wounded)
+  // #183: a knife to the head finishes a plain soldier at full health.
+  const headTag = await soldier('h_head', 200)
+  if (headTag) {
+    const before = bars.filter(b => b.includes('击败')).length
+    let headKill = false
+    for (let n = 0; n < 6 && !headKill; n++) {
+      await rcon(`execute as ${name} at @s run tp ${one(headTag)} ^ ^ ^1.4 facing entity @s`)
+      await sleep(400)
+      const target = bot.nearestEntity(e => ['zombie', 'husk', 'drowned'].includes(e.name) && e.position.distanceTo(bot.entity.position) < 3)
+      if (!target) continue
+      await bot.lookAt(target.position.offset(0, target.height - 0.15, 0), true)
+      await sleep(600)
+      bot.attack(target)
+      await sleep(700)
+      headKill = bars.filter(b => b.includes('击败')).length > before
+      if (!headKill) break // one cut only: a body cut would not kill from 200
+    }
+    check('a knife to the head kills a soldier at full health (#183)', headKill)
+    if (headKill) killed++
+  }
+  // #177: a knife breaks raid glass.
+  const p = bot.entity.position.floored()
+  const glass = p.offset(0, 1, 2)
+  await rcon(`execute as ${name} at @s run setblock ~ ~1 ~2 minecraft:glass`)
+  await rcon(`execute as ${name} at @s run tp @s ~ ~ ~ 0 0`)
+  await sleep(600)
+  await bot.lookAt(glass.offset(0.5, 0.5, 0.5), true)
+  await sleep(250)
+  const block = bot.blockAt(glass)
+  if (block) { try { bot.swingArm('right'); await bot._client.write('block_dig', { status: 0, location: glass, face: 2, sequence: 1 }) } catch (e) {} }
+  await sleep(800)
+  const after = await rcon(`execute as ${name} at @s if block ~ ~1 ~2 minecraft:air`)
+  check('a knife swing breaks raid glass (#177)', after.includes('passed'), after)
   const feed = await rcon(`cv feed ${name}`)
   const feedKills = feed.split('\n').filter(l => l.includes(name) && !l.includes('击杀栏是空的')).length
   check(`the kill feed holds the ${KILLS} soldier kills`, feedKills >= KILLS, feed.replace(/\n/g, ' / '))

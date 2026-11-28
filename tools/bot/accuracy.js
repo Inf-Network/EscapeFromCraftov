@@ -902,6 +902,39 @@ async function piecewise (spot) {
 }
 
 /**
+ * Honest client with high latency starting to aim on a sprint: the server drops the sprint modifier
+ * and slows aiming at once, while this client keeps its old speed for `lagMs` (it has not heard yet).
+ * Its keep-alive answers are held back by the same time first, so the server knows its ping, as it
+ * would for a real player that far away.
+ */
+async function adslag (spot, lagMs = 600) {
+  // Only the answer is late: the client's own keep-alive timer keeps running as before.
+  const write = bot._client.write.bind(bot._client)
+  bot._client.write = (name, params) => name === 'keep_alive' ? setTimeout(() => write(name, params), lagMs) : write(name, params)
+  log(`adslag${lagMs}: answering keep-alives ${lagMs} ms late for 50 s so the server learns the ping`)
+  await sleep(50000)
+  await arm('p18')
+  const from = logSize()
+  for (let leg = 0; leg < 3; leg++) {
+    await runway(spot)
+    await startSprint()
+    ignoreSlow = true
+    const stop = aimWhile()
+    await sleep(lagMs)
+    stopSprint()
+    ignoreSlow = false
+    const speed = bot.entity.attributes['generic.movement_speed']
+    if (speed) bot.entity.attributes['minecraft:movement_speed'] = { ...speed, modifiers: (speed.modifiers || []).filter(m => !String(m.uuid).includes('sprinting')) }
+    await sleep(500)
+    stop()
+    await sleep(500)
+  }
+  const caught = heldBackLines(from)
+  for (const line of caught) log('  server: ' + line.slice(line.indexOf('[debug]')))
+  check(`adslag${lagMs}: honest high-latency client starting to aim is never logged`, caught.length === 0, `${caught.length} logged`)
+}
+
+/**
  * A stall: two ticks of nothing at all from the client (movement and tick ends kept), a click in the
  * second, then all of it at once. Nothing is known about the stalled ticks, so the shot reads the
  * sprint the bot was on; the burst brings three ticks' ends with three ticks' movement, which the
@@ -1416,6 +1449,7 @@ async function ai () {
     else if (scenario === 'mimic') await mimic(spot)
     else if (scenario === 'piecewise') await piecewise(spot)
     else if (scenario === 'stall') await stalls(spot)
+    else if (scenario === 'adslag') await adslag(spot, 600)
     else if (scenario === 'fallback') await fallback(spot)
     else if (scenario === 'stance') await stance(spot)
     else if (scenario === 'recoil') await recoil(spot)

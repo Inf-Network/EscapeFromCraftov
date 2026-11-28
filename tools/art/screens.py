@@ -110,7 +110,7 @@ def digit(img, x, y, ch, color):
 
 def hint(img, x, y, kind):
     """A faint 16x16 picture inside an empty hotbar well, saying what the key is for: guns on 1-2,
-    the knife on 3, ammo, meds, grenades and keys on 4-8, the terminal on 9 (CarryService rules)."""
+    the knife on 3, the pockets on 4-8 (anything small), the terminal on 9 (CarryService rules)."""
     t = Image.new('RGBA', (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(t)
     c = SILHOUETTE
@@ -123,18 +123,17 @@ def hint(img, x, y, kind):
     elif kind == 'knife':
         d.polygon([(3, 13), (11, 4), (13, 3), (12, 6), (5, 14)], fill=c)
         d.rectangle([2, 12, 4, 14], fill=c)
-    elif kind == 'util':                    # a round and a cross
-        d.rectangle([3, 6, 5, 13], fill=c)
-        d.ellipse([3, 3, 5, 7], fill=c)
-        d.rectangle([10, 5, 11, 12], fill=c)
-        d.rectangle([7, 8, 14, 9], fill=c)
+    elif kind == 'pocket':                  # a pouch under its flap, with a button
+        d.rectangle([3, 5, 12, 13], fill=c)
+        d.polygon([(2, 3), (13, 3), (13, 6), (8, 9), (7, 9), (2, 6)], fill=mix(c, rgb(P.BG), 0.55))
+        d.rectangle([7, 7, 8, 8], fill=c)
     else:                                   # terminal
         d.rectangle([4, 2, 11, 13], fill=c)
         d.rectangle([5, 3, 10, 9], fill=mix(c, rgb(P.BG), 0.5))
     img.alpha_composite(t, (x + 1, y + 1))
 
 
-HOTBAR_HINTS = ['gun', 'gun', 'knife', 'util', 'util', 'util', 'util', 'util', 'terminal']
+HOTBAR_HINTS = ['gun', 'gun', 'knife', 'pocket', 'pocket', 'pocket', 'pocket', 'pocket', 'terminal']
 
 
 def carry_rows(img, top, hotbar_y, keycaps_y):

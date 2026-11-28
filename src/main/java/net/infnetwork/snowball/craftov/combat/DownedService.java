@@ -197,7 +197,7 @@ public final class DownedService implements Listener {
         player.closeInventory();
         plugin.weapons().reset(player);
         plugin.health().setHealthKnockedDown(player, 1.0);
-        player.setSprinting(false);
+        plugin.weapons().stopSprint(player);
         plugin.health().forceSpeedUpdate(player);
         String wait = hasStandingMate(raid, rp) ? "等待队友救援" : "<accent>使用自救注射器<muted>";
         player.showTitle(Title.title(Text.mm("<danger><b>" + (first ? "第一次倒地" : "第二次倒地")),

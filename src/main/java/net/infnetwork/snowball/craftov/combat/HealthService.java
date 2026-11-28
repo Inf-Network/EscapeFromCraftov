@@ -480,7 +480,7 @@ public final class HealthService implements Listener {
             player.setFoodLevel(food);
         }
         if (noSprint && player.isSprinting()) {
-            player.setSprinting(false);
+            plugin.weapons().stopSprint(player);
         }
     }
 

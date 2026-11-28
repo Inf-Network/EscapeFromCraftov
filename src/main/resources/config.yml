@@ -470,6 +470,16 @@ weapons:
       pump: 1.4
       lmg: 1.8
       bolt: 2.0
+  # The server's check on movement held back before a shot (a modified client keeps its movement back
+  # to read as stopping, then sends it at once). Each client tick may cover what vanilla physics allows
+  # from the speed of the tick before, plus step-margin blocks (rounding and the client's own small
+  # pushes) and crowd-margin for each other body the player stands in (the client pushes itself out of
+  # them). A tick over that is movement held back: for careful-seconds (s) the player is judged by the
+  # fastest they moved since, and never as stopping.
+  movement-check:
+    careful-seconds: 3
+    step-margin: 0.02
+    crowd-margin: 0.05
   recoil:
     # Camera kick per shot is the gun's recoil (items.yml, degrees up; recoil-h at most sideways)
     # times these while sneaking and when fired from the hip on a sprint.

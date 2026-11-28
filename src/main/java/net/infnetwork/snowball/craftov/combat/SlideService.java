@@ -600,7 +600,7 @@ public final class SlideService implements Listener {
         player.setSneaking(false);
         player.setPose(Pose.STANDING, true);
         // A rider does not sprint (the vanilla client stops on a seat too): the slide drains its own stamina.
-        player.setSprinting(false);
+        plugin.weapons().stopSprint(player);
         plugin.stamina().spend(player, Math.max(0, setting("start-cost", 0)));
         plugin.footsteps().slide(player);
         dust(slide, 10);

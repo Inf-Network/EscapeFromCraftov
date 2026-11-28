@@ -34,10 +34,21 @@
 //            the burst: no shot reads as stopping, all have the sprint cone, nothing is logged as held
 //            back, and a real stop afterwards (a strafe let go, the shot 100 ms later) reads as
 //            stopping.
-//   fallback the same bot sending no tick ends (measured per server tick, as before): a real stop
-//            reads as stopping, two ticks without any movement before each click are not logged
-//            (they still buy the stop cone there: the fallback's gap), micro-steps then a dump are
-//            logged and the shots after it careful.
+//   fallback the same bot sending no tick ends (measured per server tick, as before): it never
+//            reads as stopping (judged by its highest recent reading), not after a real stop either;
+//            two ticks without any movement before each click are not logged and buy nothing (every
+//            shot keeps the sprint cone); micro-steps then a dump are logged and the shots after it
+//            careful.
+//   setback  issue #171's bypasses, each on a P18 sprint. setback: a move 15 blocks off (the server
+//   blackout refuses it and puts the bot back), then the held-two-ticks catch-up: the setback buys no
+//   flagdrop unchecked ticks, the catch-up is logged and no shot after the first reads as stopping.
+//            blackout: standing still, then a sprint without the sprint command and without tick ends
+//            (moves still sent): the server measures it per server tick at once, so every shot has
+//            the sprint cone and none reads as stopping. flagdrop: the stop-sprinting command on a
+//            sprint, still running at sprint pace: the shots after it have the sprint cone.
+//   bhop     honest: sprint-jumps held along the runway, four legs; nothing is logged as held back.
+//   slide    honest: three slides down the runway (sprint, sneak tapped twice, held), each followed by
+//            a sprint: the bot is sat on a seat each time, and nothing is logged as held back.
 //            spread, sprint, stance, recoil and aimed also check that the server never logs the
 //            bot's movement as held back (but in sprint's two modified-client parts).
 //   stance   a spectator next to the runway sees the M4C carried low while standing (#3), low on a
@@ -97,9 +108,9 @@ const t0 = Date.now()
 const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a.map(x => typeof x === 'string' ? x : JSON.stringify(x)))
 const name = 'Acc' + Math.floor(10000 + Math.random() * 90000)
 const wanted = process.argv.slice(2)
-const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'held', 'defer', 'micro', 'mimic', 'piecewise', 'stall', 'fallback', 'stance', 'recoil', 'aimed']
+const scenarios = wanted.length ? wanted : ['spread', 'sprint', 'held', 'defer', 'micro', 'mimic', 'piecewise', 'stall', 'fallback', 'setback', 'blackout', 'flagdrop', 'bhop', 'slide', 'stance', 'recoil', 'aimed']
 /** Scenarios that play an honest client throughout, but for the spans they mark in cheatSpans: the server must never log their movement as held back. */
-const HONEST = ['spread', 'sprint', 'stance', 'recoil', 'aimed']
+const HONEST = ['spread', 'sprint', 'bhop', 'slide', 'stance', 'recoil', 'aimed']
 
 const failures = []
 function check (label, ok, detail = '') {
@@ -797,8 +808,11 @@ async function cheatCase (spot, label, legs, play, expect = { caught: true }) {
   return lines
 }
 
-/** A real stop (a strafe let go, the shot 100 ms later), four times: most must read as stopping, none careful. */
-async function realStop (spot, label) {
+/**
+ * A real stop (a strafe let go, the shot 100 ms later), four times: most must read as stopping, none
+ * careful; or with `never`, none may read as stopping (a client without tick ends).
+ */
+async function realStop (spot, label, never = false) {
   await home(spot)
   dropKey()
   await sleep(3500)
@@ -813,7 +827,8 @@ async function realStop (spot, label) {
     await sleep(600)
   }
   const stops = await loggedShots(from, 4)
-  check(`${label}: a real stop reads as stopping`, stops.length === 4 && stops.filter(l => l.stop && !l.held).length >= 2 && !stops.some(l => l.held),
+  const ok = never ? stops.length === 4 && !stops.some(l => l.stop) : stops.length === 4 && stops.filter(l => l.stop && !l.held).length >= 2 && !stops.some(l => l.held)
+  check(`${label}: ${never ? 'a real stop never reads as stopping' : 'a real stop reads as stopping'}`, ok,
     stops.map(l => `${l.stop ? 'stop' : 'moving'}${l.held ? ' careful' : ''} m${l.move.toFixed(2)}`).join(', ') || 'no shot logged')
 }
 
@@ -956,19 +971,20 @@ async function stalls (spot) {
 
 /**
  * A client that sends no tick ends (a bot, or a modified client that drops them) is measured per
- * server tick, as before the client's clock was used. A real stop still reads as stopping. Two ticks
- * without any movement before each click read as stopping, as they always did without the clock (the
- * fallback's known gap): nothing may be logged for them, since the burst after is what a stall looks
- * like too. Steps of 0.011 instead, then the dump, are more than the physics allows even with a tick
- * to spare for packets bunched up: logged, and the shots after them careful.
+ * server tick, as before the client's clock was used, and never reads as stopping: it could choose
+ * that path to hold its movement back unseen (issue #171), so it is judged by its highest recent
+ * reading. Two ticks without any movement before each click buy nothing: a server tick without
+ * movement is no news, and nothing may be logged for them, since the burst after is what a stall
+ * looks like too. Steps of 0.011 instead, then the dump, are more than the physics allows even with a
+ * tick to spare for packets bunched up: logged, and the shots after them careful.
  */
 async function fallback (spot) {
   if (!plainCone) await plainSprintCone(spot)
   tickEnds = false
   try {
-    await sleep(2500) // the server stops counting on tick ends after 40 ticks without one
-    await realStop(spot, 'fallback (no tick ends)')
-    await cheatCase(spot, 'fallback: held two ticks', 2, holdTwo, { caught: false, shots: 6, stopsAllowed: true })
+    await sleep(2500)
+    await realStop(spot, 'fallback (no tick ends)', true)
+    await cheatCase(spot, 'fallback: held two ticks', 2, holdTwo, { caught: false, shots: 6 })
     await cheatCase(spot, 'fallback: micro-steps', 2, async () => {
       await lie((real, said, k) => {
         if (k === 2) bot.swingArm()
@@ -981,6 +997,146 @@ async function fallback (spot) {
   } finally {
     tickEnds = true
   }
+}
+
+// ---------------------------------------------------------------- issue #171
+/** Plays a move 15 blocks off on the next movement packet (refused: the server puts the bot back), then honest again. */
+const provokeSetback = () => lie((real, said, k) => k === 0 ? { x: real.x + 15, y: real.y, z: real.z } : 'real')
+/** Two ticks without movement (their tick ends sent), a click on the second, then the catch-up. */
+const holdOnce = () => lie((real, said, k) => { if (k === 1) bot.swingArm(); return k < 2 ? null : 'real' })
+
+/**
+ * Bypass: a refused move bought 20 unchecked ticks, and inside them the issue's hold (two ticks
+ * without movement, the click, the catch-up) went unseen. Now a setback only puts the track where the
+ * server put the bot, from the speed it had: the catch-up is logged, and every shot after the first
+ * (which the server fires before the catch-up arrives) is careful, never stopping.
+ */
+async function setback (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  const lines = await cheatCase(spot, 'setback', 2, async () => {
+    for (let i = 0; i < 3; i++) {
+      await provokeSetback()
+      await sleep(150)
+      await holdOnce()
+      await sleep(150)
+    }
+  }, { caught: true, after: 4 })
+  check('setback: no shot after the first reads as stopping', lines.length >= 6 && lines.slice(1).every(l => !l.stop), shotList(lines))
+}
+
+/**
+ * Bypass: standing still (the reading says still), then tick ends stop while the moves go on, on a
+ * sprint the bot never announces: the reading froze for 2 s. Now movement with no tick end after it
+ * is measured per server tick at once, never as stopping: every shot has the sprint cone. A refused
+ * move and the tick ends coming back at the end must not be logged as held back either.
+ */
+async function blackout (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await home(spot)
+  dropKey()
+  await sleep(3500)
+  const from = logSize()
+  await runway(spot)
+  await sleep(500)
+  tickEnds = false
+  let frozen = []
+  try {
+    await startSprint(false)
+    const shotFrom = logSize()
+    for (let i = 0; i < 3; i++) { bot.swingArm(); await sleep(250) }
+    frozen = await loggedShots(shotFrom, 3)
+    await provokeSetback()
+    await sleep(100)
+  } finally {
+    tickEnds = true
+  }
+  await sleep(300)
+  stopSprint(false)
+  await sleep(1000)
+  cheatSpans.push([from, logSize()])
+  log(`blackout: ${shotList(frozen)} vs plain ${plainCone.toFixed(2)}`)
+  check('blackout: shots on a sprint without tick ends have the sprint cone, none stopping',
+    frozen.length === 3 && frozen.every(l => !l.stop && l.spread >= 0.9 * plainCone), shotList(frozen))
+}
+
+/**
+ * Bypass: the stop-sprinting command on a sprint while still running at sprint pace. The pace to
+ * beat stayed the sprint's for 10 ticks (and the ping), and the shots in them had the walking cone.
+ * Now the client's own stop takes the sprint out of it at once: the first tick at sprint pace after
+ * it covers more than walking can, and every shot after that has the sprint cone.
+ */
+async function flagdrop (spot) {
+  if (!plainCone) await plainSprintCone(spot)
+  await cheatCase(spot, 'flagdrop', 2, async () => {
+    command('stop_sprinting') // the sprint key stays down: mineflayer keeps its sprint speed
+    for (let i = 0; i < 3; i++) { await sleep(150); bot.swingArm() }
+    await sleep(150)
+  }, { caught: true, after: 4 })
+}
+
+/** Honest bunny hops: sprint and jump held along the runway, four legs. Nothing may be logged as held back. */
+async function bhop (spot) {
+  await arm('p18')
+  const from = logSize()
+  for (let leg = 0; leg < 4; leg++) {
+    await runway(spot)
+    bot.setControlState('forward', true)
+    bot.setControlState('sprint', true)
+    command('start_sprinting')
+    await sleep(150)
+    bot.setControlState('jump', true)
+    await sleep(1100)
+    bot.setControlState('jump', false)
+    stopSprint()
+    await sleep(400)
+  }
+  const caught = heldBackLines(from)
+  for (const line of caught) log('  server: ' + line.slice(line.indexOf('[debug]')))
+  check('bhop: honest sprint-jumps are never logged as held back', caught.length === 0, `${caught.length} logged`)
+}
+
+/**
+ * Honest slides: a sprint, sneak tapped twice (as player_input packets, the way the vanilla client
+ * sends them) and held, then up and sprinting on, three times. The slide rides a seat the server
+ * moves, and the player gets off it with the slide's speed: nothing may be logged as held back.
+ */
+async function slides (spot) {
+  await arm('p18')
+  const from = logSize()
+  let seated = 0
+  const onRide = p => { if (p.passengers && p.passengers.includes(bot.entity.id)) seated++ }
+  bot._client.on('set_passengers', onRide)
+  try {
+    for (let leg = 0; leg < 3; leg++) {
+      await runway(spot)
+      bot.setControlState('forward', true)
+      bot.setControlState('sprint', true)
+      keys({ forward: true, sprint: true })
+      command('start_sprinting')
+      await sleep(900)
+      keys({ forward: true, sprint: true, shift: true })
+      await sleep(100)
+      keys({ forward: true, sprint: true })
+      await sleep(100)
+      keys({ forward: true, sprint: true, shift: true })
+      // A vanilla client stops sprinting on the seat, and starts again (saying so) once off it.
+      bot.setControlState('sprint', false)
+      await sleep(1200)
+      keys({ forward: true, sprint: true })
+      bot.setControlState('sprint', true)
+      command('start_sprinting')
+      await sleep(600)
+      stopSprint()
+      keys({})
+      await sleep(400)
+    }
+  } finally {
+    bot._client.removeListener('set_passengers', onRide)
+  }
+  const caught = heldBackLines(from)
+  for (const line of caught) log('  server: ' + line.slice(line.indexOf('[debug]')))
+  check('slide: the bot slid each time', seated >= 3, `${seated} seats`)
+  check('slide: honest slides are never logged as held back', caught.length === 0, `${caught.length} logged`)
 }
 
 // ---------------------------------------------------------------- stance
@@ -1451,6 +1607,11 @@ async function ai () {
     else if (scenario === 'stall') await stalls(spot)
     else if (scenario === 'adslag') await adslag(spot, 600)
     else if (scenario === 'fallback') await fallback(spot)
+    else if (scenario === 'setback') await setback(spot)
+    else if (scenario === 'blackout') await blackout(spot)
+    else if (scenario === 'flagdrop') await flagdrop(spot)
+    else if (scenario === 'bhop') await bhop(spot)
+    else if (scenario === 'slide') await slides(spot)
     else if (scenario === 'stance') await stance(spot)
     else if (scenario === 'recoil') await recoil(spot)
     else if (scenario === 'aimed') await aimed(spot)

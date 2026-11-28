@@ -4,12 +4,15 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
@@ -33,7 +36,9 @@ import java.util.UUID;
  * ground than vanilla physics allows from the speed the player had (see {@link #reach}), and the
  * player is judged carefully for a few seconds (see {@link #HELD_TICKS}). A client that sends no tick
  * ends (a bot, or a modified client that drops them) is measured per server tick as before, and
- * checked the same way, loosened by the ticks its packets may have been bunched over.
+ * checked the same way, loosened by the ticks its packets may have been bunched over; so is one that
+ * moves without the tick end a vanilla client sends right behind every move, from the next server
+ * tick on, until its tick ends come back (issue #171: it could freeze its reading while it ran).
  */
 final class MotionTracker {
 
@@ -80,7 +85,10 @@ final class MotionTracker {
      * walk stays above it, and so does slowing down to the pace of aiming.
      */
     private static final double STOP_RATIO = 0.85;
-    /** Server ticks without a tick end after which the client counts as one that sends none. */
+    /**
+     * Server ticks without a tick end after which a client that has not moved counts as one that sends
+     * none. One that moves counts at once: a vanilla client sends a tick end right behind every move.
+     */
     private static final int CLOCK_TIMEOUT = 40;
     /** What a tick on normal ground keeps of the player's speed (block friction 0.6 times 0.91). */
     private static final double GROUND_FRICTION = 0.546;
@@ -90,17 +98,24 @@ final class MotionTracker {
     private static final double AIR_ACCEL = 0.026;
     /** What a sprint-jump adds to it as the player leaves the ground. */
     private static final double JUMP_BOOST = 0.2;
-    /** Blocks a tick allowed on top of the physics, for rounding and the client's own small pushes. */
+    /**
+     * Blocks a tick allowed on top of the physics, for rounding and the client's own small pushes
+     * (weapons.movement-check.step-margin).
+     */
     private static final double STEP_MARGIN = 0.02;
-    /** Blocks a tick allowed for each other body the player stands in: the client pushes itself out of them. */
+    /**
+     * Blocks a tick allowed for each other body the player stands in: the client pushes itself out of
+     * them (weapons.movement-check.crowd-margin).
+     */
     private static final double CROWD_MARGIN = 0.05;
     /**
-     * Server ticks nothing is checked after a teleport, a respawn or a change of world: the speed carried
-     * over is not known, and the server drops the movement the client sent before it took the teleport in.
+     * The speed (blocks a tick) a tick is checked from where the one before is not known: after a
+     * teleport, a respawn or a change of world, and after a tick in water or lava, on a ladder, on ice,
+     * riding or gliding, whose physics differ. About a sprint-jump's, carried as from the air, which
+     * keeps the most of it: vanilla friction brings the bound down to the player's real speed within a
+     * few ticks, with no ticks left unchecked to hold movement back in (issue #171).
      */
-    private static final int RESET_TICKS = 20;
-    /** Server ticks nothing is checked after water, lava, a ladder, ice, a vehicle or a glide, whose physics differ. */
-    private static final int EXEMPT_TICKS = 20;
+    private static final double CARRIED = 0.6;
     /** Server ticks a push from the server (a blast, a punch) may take to reach the client and be moved by. */
     private static final int PUSH_TICKS = 40;
     /** Client ticks of physics checked at most at once (a long stall's worth). */
@@ -109,7 +124,7 @@ final class MotionTracker {
      * Server ticks after movement held back for which the player is judged carefully: as fast as they
      * have moved at any time since, and in the {@link #STOP_WINDOW} readings before, and never as
      * stopping. Holding back again, however long, buys nothing; doing it starts the 3 s over. A real
-     * stop counts again once they are over.
+     * stop counts again once they are over (weapons.movement-check.careful-seconds, in seconds).
      */
     private static final int HELD_TICKS = 60;
 
@@ -131,8 +146,12 @@ final class MotionTracker {
         int newSteps;
         /** The walking pace the movement-speed attribute allowed in each of the last server ticks. */
         final double[] paces = new double[PACE_HISTORY];
+        /** The same without the sprint's part: what {@link #paces} become when the client stops a sprint itself. */
+        final double[] walkPaces = new double[PACE_HISTORY];
         int nextPace;
         boolean pacesSet;
+        /** The server tick the server last stopped the player's sprint itself (see {@link #sprintForced}). */
+        long forcedStop = Long.MIN_VALUE / 2;
         /** The highest of {@link #paces}: the pace to compare with. */
         double pace = WALK_SPEED;
         /** Consecutive readings spent on the ground well over that pace. */
@@ -143,7 +162,10 @@ final class MotionTracker {
         double speed;
         /** Slowing down to a stop at the last reading (see {@link #stopping}). */
         boolean stopping;
-        /** The speed the player is judged by: the measured one, or while {@link #careful} the highest since it began. */
+        /**
+         * The speed the player is judged by: the measured one, while {@link #careful} the highest since
+         * it began, and while {@link #clockless} about the highest of the last {@link #STOP_WINDOW} readings.
+         */
         double judged;
         /** Judged carefully at the last reading, after movement held back (see {@link #HELD_TICKS}). */
         boolean careful;
@@ -152,14 +174,26 @@ final class MotionTracker {
         double heldSpeed;
         /** The server tick the last tick end came in. */
         long lastEnd = Long.MIN_VALUE / 2;
-        /** A client without tick ends: server ticks in a row that brought no movement. */
+        /**
+         * Measured per server tick: the client sends no tick ends, or moved without one after it (see
+         * {@link #sample}), until its next tick end.
+         */
+        boolean clockless;
+        /** Where the server had the player when the track last took a position (to see movement no tick end came for). */
+        double seenX;
+        double seenY;
+        double seenZ;
+        /** Measured per server tick: server ticks in a row that brought no movement. */
         int quiet;
         /** The last tick's step, as checked against the physics, and whether it started and ended on the ground. */
         double lastStep;
         boolean lastStartGround = true;
         boolean lastEndGround = true;
-        /** Server ticks left in which no step is checked against the physics. */
-        int unchecked;
+        /**
+         * Server ticks left after a refused move in which a tick end is no news until the client's next
+         * accepted move (see {@link #setBack}).
+         */
+        int awaitTicks;
         /** A push from the server that may still be arriving: its horizontal speed, and server ticks left. */
         double push;
         int pushTicks;
@@ -177,6 +211,15 @@ final class MotionTracker {
     }
 
     private final Map<UUID, Track> tracks = new HashMap<>();
+    private final Plugin plugin;
+
+    MotionTracker(Plugin plugin) {
+        this.plugin = plugin;
+    }
+
+    private double setting(String key, double fallback) {
+        return Math.max(0, plugin.getConfig().getDouble("weapons.movement-check." + key, fallback));
+    }
 
     /** A track that starts again from where the player is now. */
     private static void restart(Track track, Player player, Location at) {
@@ -193,15 +236,35 @@ final class MotionTracker {
         track.x = at.getX();
         track.y = at.getY();
         track.z = at.getZ();
-        track.lastStep = 0;
-        track.lastStartGround = track.lastEndGround = grounded(player);
-        track.unchecked = RESET_TICKS;
+        track.lastStep = CARRIED;
+        track.lastStartGround = false;
+        track.lastEndGround = grounded(player);
+        // The server drops what the client sends until it has taken the teleport in: its tick ends
+        // till then are no news, and the first move after starts from the speed carried.
+        track.awaitTicks = settleTicks(player);
         track.quiet = 0;
+        seen(track, player.getLocation());
+    }
+
+    /** Notes where the server has the player now that the track took a position. */
+    private static void seen(Track track, Location server) {
+        track.seenX = server.getX();
+        track.seenY = server.getY();
+        track.seenZ = server.getZ();
+    }
+
+    /** True when {@code at} is not where the track last took a position. */
+    private static boolean away(Track track, Location at) {
+        return at.getX() != track.x || at.getY() != track.y || at.getZ() != track.z;
     }
 
     /** True when the track has nothing to measure from: then it starts again here. */
     private static boolean restarted(Track track, Player player, Location at) {
-        if (track.fresh || !at.getWorld().getUID().equals(track.world)) {
+        boolean elsewhere = !at.getWorld().getUID().equals(track.world);
+        if (track.fresh || elsewhere) {
+            if (elsewhere) {
+                endCareful(track); // a raid's careful spell does not follow the player out of it
+            }
             restart(track, player, at);
             return true;
         }
@@ -232,12 +295,29 @@ final class MotionTracker {
     void tickEnded(Player player) {
         Track track = tracks.computeIfAbsent(player.getUniqueId(), id -> new Track());
         track.lastEnd = Bukkit.getCurrentTick();
-        Location at = player.getLocation();
+        Location server = player.getLocation();
+        Location at = server.clone();
         if (track.claimSet) {
             at.set(track.claimX, track.claimY, track.claimZ);
             track.claimSet = false;
+        } else if (track.awaitTicks > 0 && at.getX() == track.x && at.getY() == track.y && at.getZ() == track.z) {
+            return; // put back and not moved since: the server drops what the client sends until it takes that in
         }
+        track.awaitTicks = 0;
         if (restarted(track, player, at)) {
+            track.clockless = false;
+            return;
+        }
+        if (track.clockless) {
+            // Back on the client's clock. Movement since the last server tick measured is checked as
+            // those were; none is no news: that tick end belongs to movement already measured.
+            track.clockless = false;
+            if (away(track, at)) {
+                double moved = step(track, at, 1);
+                track.caughtSince = Math.max(track.caughtSince, check(player, track, moved, 1, track.quiet + 2));
+            }
+            track.quiet = 0;
+            seen(track, server);
             return;
         }
         // The sprint it may have started this very tick (its command comes before the movement).
@@ -245,6 +325,7 @@ final class MotionTracker {
         double moved = step(track, at, 1);
         double caught = check(player, track, moved, 1, 1);
         track.caughtSince = Math.max(track.caughtSince, caught);
+        seen(track, server);
     }
 
     /**
@@ -259,20 +340,19 @@ final class MotionTracker {
         Location at = player.getLocation();
         Track track = tracks.computeIfAbsent(player.getUniqueId(), id -> new Track());
         double walk = walkPace(player);
+        double unsprinted = unsprinted(player);
         if (!track.pacesSet) {
             Arrays.fill(track.paces, walk);
+            Arrays.fill(track.walkPaces, unsprinted);
             track.pacesSet = true;
         }
         track.paces[track.nextPace] = walk;
+        track.walkPaces[track.nextPace] = unsprinted;
         track.nextPace = (track.nextPace + 1) % PACE_HISTORY;
         // A speed the server lowers (aiming on a sprint, stamina running out, a skill ending, a
         // fracture) reaches the client a round trip later, and until then it honestly moves at the
         // old pace: the window covers that round trip twice over (for jitter) on top of its own ticks.
-        int window = Math.min(PACE_HISTORY, PACE_WINDOW + (int) Math.ceil(Math.max(0, player.getPing()) * 2 / 50.0));
-        double pace = 0;
-        for (int i = 1; i <= window; i++) {
-            pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
-        }
+        double pace = windowPace(track, player);
         track.pace = pace;
         if (track.heldTicks > 0) {
             track.heldTicks--;
@@ -280,17 +360,30 @@ final class MotionTracker {
         if (track.pushTicks > 0) {
             track.pushTicks--;
         }
-        if (track.unchecked > 0) {
-            track.unchecked--;
+        if (track.awaitTicks > 0) {
+            track.awaitTicks--;
         }
         if (restarted(track, player, at)) {
             return 0;
         }
-        if (Bukkit.getCurrentTick() - track.lastEnd > CLOCK_TIMEOUT) {
-            // No tick ends from this client: one step per server tick, as ever. The physics may spend
-            // on movement that arrives the ticks since the last that brought some (it may have been
-            // held back, or bunched up) and one more (two packets in one server tick).
-            boolean arrived = at.getX() != track.x || at.getY() != track.y || at.getZ() != track.z;
+        long now = Bukkit.getCurrentTick();
+        if (!track.clockless && (at.getX() != track.seenX || at.getY() != track.seenY || at.getZ() != track.seenZ
+                || now - track.lastEnd > CLOCK_TIMEOUT)) {
+            // The player moved and no tick end came after it (or none has for 2 s): a client that stops
+            // sending them would freeze its reading while it runs (issue #171). Measured per server
+            // tick from here, starting with the movement since its last tick end, which may have taken
+            // the server ticks since that end and one more (two packets in one server tick).
+            track.clockless = true;
+            track.quiet = (int) Math.max(0, Math.min(MAX_REACH, now - track.lastEnd) - 1);
+        }
+        if (track.clockless) {
+            // One step per server tick. The physics may spend on movement that arrives the ticks since
+            // the last that brought some (it may have been held back, or bunched up) and one more.
+            if (track.claimSet) {
+                at.set(track.claimX, track.claimY, track.claimZ);
+                track.claimSet = false;
+            }
+            boolean arrived = away(track, at);
             double moved = step(track, at, 1);
             if (arrived) {
                 track.caughtSince = Math.max(track.caughtSince, check(player, track, moved, 1, track.quiet + 2));
@@ -298,6 +391,7 @@ final class MotionTracker {
             } else {
                 track.quiet = Math.min(MAX_REACH, track.quiet + 1);
             }
+            seen(track, player.getLocation());
         }
         double caught = track.caughtSince;
         track.caughtSince = 0;
@@ -314,10 +408,16 @@ final class MotionTracker {
         if (careful) {
             track.heldSpeed = Math.max(track.heldSpeed, Math.max(speed, recent));
         }
-        double judged = careful ? track.heldSpeed : speed;
-        boolean fast = groundRun(player) && judged > RUN_RATIO * pace;
+        // Without the client's clock a stop cannot be told from movement held back (a client could
+        // drop its tick ends for just that, issue #171): judged by the highest recent reading, never
+        // as stopping. The second highest of them and this one: packets bunched up over server ticks
+        // put a single reading well over the pace now and then, which would cost a steady sneak.
+        double judged = careful ? track.heldSpeed : track.clockless ? secondHighest(track.speeds, speed) : speed;
+        // A run ends as it reads: that only takes the sprint cone off, and a run kept on for the
+        // readings after a sprint would hold it on a gun brought up out of one.
+        boolean fast = groundRun(player) && (careful ? judged : speed) > RUN_RATIO * pace;
         track.fastTicks = fast ? track.fastTicks + 1 : 0;
-        track.stopping = !careful && speed < track.speed && speed < STOP_RATIO * Math.min(recent, walk);
+        track.stopping = !careful && !track.clockless && speed < track.speed && speed < STOP_RATIO * Math.min(recent, walk);
         track.speed = speed;
         track.judged = judged;
         track.careful = careful;
@@ -335,18 +435,24 @@ final class MotionTracker {
     private double check(Player player, Track track, double moved, int ticks, int reach) {
         boolean ground = grounded(player);
         if (exempt(player)) {
-            track.unchecked = Math.max(track.unchecked, EXEMPT_TICKS);
+            // Not vanilla ground physics: not checked, and the next tick starts from a speed it cannot
+            // have beaten, from the air (whose friction keeps the most, more than ice's).
+            track.lastStep = Math.max(CARRIED, moved);
+            track.lastStartGround = false;
+            track.lastEndGround = ground;
+            return 0;
         }
         int n = Math.min(MAX_REACH, reach);
         double[] most = reach(n, track.lastStep, track.lastStartGround, track.lastEndGround, ground,
                 track.pace / BLOCKS_PER_SPEED, track.pushTicks > 0 ? track.push : 0);
         double caught = 0;
-        if (track.unchecked <= 0 && moved > most[0] + n * STEP_MARGIN && moved > most[0] + n * (STEP_MARGIN + crowd(player))) {
+        double margin = setting("step-margin", STEP_MARGIN);
+        if (moved > most[0] + n * margin && moved > most[0] + n * (margin + crowd(player, setting("crowd-margin", CROWD_MARGIN)))) {
             caught = moved - most[0];
             if (track.heldTicks <= 0) {
                 track.heldSpeed = 0;
             }
-            track.heldTicks = HELD_TICKS;
+            track.heldTicks = Math.max(1, (int) Math.round(setting("careful-seconds", HELD_TICKS / 20.0) * 20));
             track.caught = String.format("moved=%.3f ticks=%d reach=%d most=%.3f last=%.3f ground=%s%s%s pace=%.3f push=%.2f",
                     moved, ticks, n, most[0], track.lastStep, track.lastStartGround ? "G" : "A", track.lastEndGround ? "G" : "A",
                     ground ? "G" : "A", track.pace, track.pushTicks > 0 ? track.push : 0);
@@ -427,7 +533,8 @@ final class MotionTracker {
 
     /**
      * Where the physics above does not hold: in water or lava, on a ladder, gliding or riding, flying,
-     * on ice or slime, in powder snow. The check rests for {@link #EXEMPT_TICKS} after.
+     * on ice or slime, in powder snow. Such a tick is not checked, and the next is checked from
+     * {@link #CARRIED}.
      */
     private static boolean exempt(Player player) {
         if (player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isRiptiding() || player.isSwimming()
@@ -435,12 +542,12 @@ final class MotionTracker {
             return true;
         }
         Location at = player.getLocation();
-        Material below = at.clone().subtract(0, 0.2, 0).getBlock().getType();
+        Material below = underfoot(at);
         return at.getBlock().getType() == Material.POWDER_SNOW || below == Material.SLIME_BLOCK || below.name().contains("ICE");
     }
 
     /** Blocks a tick the client may push itself out of other bodies it stands in (see {@link #CROWD_MARGIN}). */
-    private static double crowd(Player player) {
+    private static double crowd(Player player, double perBody) {
         BoundingBox body = player.getBoundingBox().expand(0.05);
         int bodies = 0;
         for (Entity other : player.getNearbyEntities(1, 1, 1)) {
@@ -448,7 +555,7 @@ final class MotionTracker {
                 break;
             }
         }
-        return bodies * CROWD_MARGIN;
+        return bodies * perBody;
     }
 
     /**
@@ -470,10 +577,13 @@ final class MotionTracker {
     }
 
     /**
-     * The server refused a move and put the player back where they were (a move into a block, or far
-     * too long): measured from there on, unchecked for a while as after a teleport, since the client
-     * restarts from there with whatever speed it had. The reading is kept: a client that gets itself
-     * put back must not read as standing for it.
+     * The server refused a move and is putting the player back where they were (a move into a block,
+     * or far too long; called as it refuses, while the player is still there): measured from there on,
+     * from the speed of the last tick, since the client restarts from there with at most the speed it
+     * had. Nothing goes unchecked for it, and the reading is kept: a client could get itself put back
+     * at will (issue #171). Until its next accepted move (or a round trip and then some) its tick ends
+     * are no news: the server drops its movement until it has taken the setback in, so they would read
+     * as standing still.
      */
     void setBack(Player player) {
         Track track = tracks.get(player.getUniqueId());
@@ -483,8 +593,17 @@ final class MotionTracker {
             track.y = at.getY();
             track.z = at.getZ();
             track.claimSet = false;
-            track.unchecked = Math.max(track.unchecked, RESET_TICKS);
+            track.awaitTicks = settleTicks(player);
+            seen(track, at);
         }
+    }
+
+    /**
+     * Server ticks for something the server tells the client to reach it and come back: {@link
+     * #PACE_WINDOW} and the player's round trip twice over (for jitter).
+     */
+    private static int settleTicks(Player player) {
+        return Math.min(PACE_HISTORY, PACE_WINDOW + (int) Math.ceil(Math.max(0, player.getPing()) * 2 / 50.0));
     }
 
     /**
@@ -520,7 +639,15 @@ final class MotionTracker {
         if (!grounded(player) || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
             return false;
         }
-        return !player.getLocation().subtract(0, 0.2, 0).getBlock().getType().name().contains("ICE");
+        return !underfoot(player.getLocation()).name().contains("ICE");
+    }
+
+    /**
+     * The block whose grip the player moves on, where vanilla looks for it: 0.500001 below the feet.
+     * 0.2 found the slab, not the ice under it, for a player on a bottom slab laid on ice.
+     */
+    private static Material underfoot(Location feet) {
+        return feet.clone().subtract(0, 0.500001, 0).getBlock().getType();
     }
 
     /**
@@ -551,7 +678,8 @@ final class MotionTracker {
      * both what it was in the last few ticks and the walking pace the player may go at now. That is
      * letting go of the keys or pressing the opposite one (a counter-strafe), not slowing down to aim
      * or under a heavier load, and not speeding up again after a turn the other way. Never while the
-     * player is judged carefully after holding back movement (see {@link #HELD_TICKS}).
+     * player is judged carefully after holding back movement (see {@link #HELD_TICKS}), nor while they
+     * are measured without the client's clock.
      */
     boolean stopping(Player player) {
         Track track = tracks.get(player.getUniqueId());
@@ -588,10 +716,80 @@ final class MotionTracker {
         return longest > HELD_BACK * track.pace && median <= 0.5 * mean ? mean : median;
     }
 
+    /** The second highest of {@code readings} and {@code now}. */
+    private static double secondHighest(double[] readings, double now) {
+        double first = now;
+        double second = 0;
+        for (double r : readings) {
+            if (r > first) {
+                second = first;
+                first = r;
+            } else if (r > second) {
+                second = r;
+            }
+        }
+        return second;
+    }
+
     /** Blocks per tick the player's movement-speed attribute walks right now. */
     private static double walkPace(Player player) {
         AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
         return (attribute == null ? 0.1 : attribute.getValue()) * BLOCKS_PER_SPEED;
+    }
+
+    /** The vanilla sprint's speed modifier (30% more, on the total). */
+    private static final NamespacedKey SPRINTING = NamespacedKey.minecraft("sprinting");
+
+    /** {@link #walkPace} without the sprint's part. */
+    private static double unsprinted(Player player) {
+        AttributeInstance attribute = player.getAttribute(Attribute.MOVEMENT_SPEED);
+        if (attribute == null) {
+            return 0.1 * BLOCKS_PER_SPEED;
+        }
+        double value = attribute.getValue();
+        AttributeModifier sprint = attribute.getModifier(SPRINTING);
+        if (sprint != null && sprint.getOperation() == AttributeModifier.Operation.MULTIPLY_SCALAR_1 && sprint.getAmount() > -1) {
+            value /= 1 + sprint.getAmount();
+        }
+        return value * BLOCKS_PER_SPEED;
+    }
+
+    /** The highest pace in the window the player's round trip calls for (see {@link #settleTicks}). */
+    private static double windowPace(Track track, Player player) {
+        int window = settleTicks(player);
+        double pace = 0;
+        for (int i = 1; i <= window; i++) {
+            pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
+        }
+        return pace;
+    }
+
+    /**
+     * The server stopped the player's sprint itself (aiming, stamina, a broken leg, a slide, going
+     * down): the client hears it a round trip later and runs at a sprint until then, so the sprint
+     * stays in the pace to beat for the usual window, also when the client's own stop comes in.
+     */
+    void sprintForced(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        if (track != null) {
+            track.forcedStop = Bukkit.getCurrentTick();
+        }
+    }
+
+    /**
+     * The client said it stopped sprinting (PlayerToggleSprintEvent, before its movement of that tick).
+     * On its own word the sprint goes out of the pace to beat at once: it moves at its walking pace from
+     * this tick on, and slows down by vanilla friction, which the check allows for. Kept for the usual
+     * window was the gap of issue #171: a client that said it stopped but ran on at a sprint had the
+     * walking cone for 10 ticks. Not when the server stopped the sprint lately (see {@link #sprintForced}).
+     */
+    void sprintStopped(Player player) {
+        Track track = tracks.get(player.getUniqueId());
+        if (track == null || !track.pacesSet || Bukkit.getCurrentTick() - track.forcedStop <= settleTicks(player)) {
+            return;
+        }
+        System.arraycopy(track.walkPaces, 0, track.paces, 0, PACE_HISTORY);
+        track.pace = windowPace(track, player);
     }
 
     /** Horizontal speed in blocks per tick, averaged over the last few ticks. */
@@ -612,12 +810,32 @@ final class MotionTracker {
         return Math.min(1.0, speed / Math.max(0.06, walkPace(player)));
     }
 
-    /** Forgets the last position: the next tick measures from wherever the player lands. */
+    /**
+     * Forgets the last position: the next tick measures from wherever the player lands. A move the
+     * client sent before the teleport goes too, or the tick end after it would start the track from
+     * where the player was before.
+     */
     void reset(Player player) {
         Track track = tracks.get(player.getUniqueId());
         if (track != null) {
             track.fresh = true;
+            track.claimSet = false;
         }
+    }
+
+    /** Respawned: a fresh track, and judged carefully no more (see {@link #HELD_TICKS}). */
+    void respawned(Player player) {
+        reset(player);
+        Track track = tracks.get(player.getUniqueId());
+        if (track != null) {
+            endCareful(track);
+        }
+    }
+
+    private static void endCareful(Track track) {
+        track.heldTicks = 0;
+        track.heldSpeed = 0;
+        track.careful = false;
     }
 
     void forget(UUID player) {

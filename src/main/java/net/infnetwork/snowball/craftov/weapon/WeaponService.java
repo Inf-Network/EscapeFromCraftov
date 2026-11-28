@@ -291,7 +291,7 @@ public final class WeaponService implements Listener {
     private final Ballistics ballistics;
     private final GunAudio audio;
     private final ImpactFx fx;
-    private final MotionTracker motion = new MotionTracker();
+    private final MotionTracker motion;
     private final Map<UUID, GunState> states = new HashMap<>();
     /** What guns put away still owe, by gun uid (see {@link Stowed}). */
     private final Map<String, Stowed> stowed = new HashMap<>();
@@ -360,6 +360,7 @@ public final class WeaponService implements Listener {
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.motion = new MotionTracker(plugin);
         this.ballistics = new Ballistics(plugin);
         this.audio = new GunAudio(plugin);
         this.fx = new ImpactFx(plugin);
@@ -2318,6 +2319,23 @@ public final class WeaponService implements Listener {
         }
     }
 
+    /** The client's own sprint stop (see {@link MotionTracker#sprintStopped}). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onSprintStop(PlayerToggleSprintEvent event) {
+        if (!event.isSprinting()) {
+            motion.sprintStopped(event.getPlayer());
+        }
+    }
+
+    /**
+     * Stops the player's sprint from the server's side (the client hears it a round trip later): the
+     * movement check allows for the sprint the client keeps until then (see {@link MotionTracker#sprintForced}).
+     */
+    public void stopSprint(Player player) {
+        motion.sprintForced(player);
+        player.setSprinting(false);
+    }
+
     /** A teleport is not movement: measure speed again from where the player lands. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
@@ -2327,7 +2345,7 @@ public final class WeaponService implements Listener {
     /** Nor is respawning, which fires no teleport event even within the same world. */
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
-        motion.reset(event.getPlayer());
+        motion.respawned(event.getPlayer());
     }
 
     /** The client's clock, which movement is measured by (see {@link MotionTracker}). */
@@ -2346,7 +2364,8 @@ public final class WeaponService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onFailMove(PlayerFailMoveEvent event) {
         if (!event.isAllowed()) {
-            Bukkit.getScheduler().runTask(plugin, () -> motion.setBack(event.getPlayer()));
+            // At once: the tick end that comes with the refused move must not read as a step.
+            motion.setBack(event.getPlayer());
         }
     }
 

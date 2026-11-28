@@ -35,6 +35,7 @@ import oggenc  # noqa: E402
 import palette  # noqa: E402
 import pixelfont  # noqa: E402
 import screens  # noqa: E402
+import textfont  # noqa: E402
 import ui  # noqa: E402
 import px  # noqa: E402
 from px import rgb  # noqa: E402
@@ -817,6 +818,38 @@ def build_screens():
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
 
 
+def build_fonts():
+    """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
+    lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
+    16 px bitmap (menu titles stay in craftov:ui's pixel font, matching the labels in the menu art).
+    Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
+    measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
+    Whatever the face lacks falls through to vanilla's own providers, which the client keeps after
+    these. CraftEngine merges this file with the glyphs it adds itself (and, with
+    override-uniform-font, copies it into minecraft:uniform). Force Unicode Font does not switch fonts:
+    it turns off the providers filtered on `uniform` (vanilla's ASCII bitmaps), and the text font
+    carries the same filter, so a player who forces Unifont gets it. The licence and provenance ship
+    next to the font file, in lower case: the client rejects a resource path with capitals."""
+    os.makedirs(os.path.join(CV, 'font'), exist_ok=True)
+    shutil.copyfile(textfont.OUT, os.path.join(CV, 'font', 'text.ttf'))
+    with open(os.path.join(textfont.FONTS, 'SOURCE.txt'), encoding='utf-8') as f:
+        source = f.read()
+    with open(os.path.join(textfont.FONTS, 'OFL.txt'), encoding='utf-8') as f:
+        licence = f.read()
+    write_text(os.path.join(CV, 'font', 'text.license.txt'), licence + '\n' + source)
+    write_json(os.path.join(MC, 'font', 'default.json'), {'providers': [textfont.provider()]})
+    # A character the plugin prints that the subset lacks is drawn by vanilla's fonts. The face lacks
+    # a few (textfont.lacking()); anything else is new text since the last bake.
+    from fontTools.ttLib import TTFont
+    have = set(TTFont(textfont.OUT, lazy=True).getBestCmap())
+    stale = sorted(ch for ch in pixelfont.source_chars() if ord(ch) < 0xFFF0 and ord(ch) not in have
+                   and ord(ch) not in textfont.VANILLA and ch not in textfont.lacking())
+    if stale:
+        print('text font: %d character(s) the plugin prints are not in %s and fall back to vanilla\'s font: %s'
+              ' (python3 tools/art/textfont.py bake adds them)' % (len(stale), os.path.relpath(textfont.OUT, ROOT),
+                                                                   ''.join(stale)))
+
+
 def build_tooltips():
     """Tooltip styles (ItemFactory, UiItems): craftov:rarity_<rarity> frames an item's tooltip in its
     rarity colour, craftov:ui is the plain one for interface buttons. Same nine-slice sizes as vanilla."""
@@ -1392,6 +1425,7 @@ def main():
     build_fx()
     build_ui()
     build_screens()
+    build_fonts()
     build_tooltips()
     build_skins()
     build_vanilla_hud()

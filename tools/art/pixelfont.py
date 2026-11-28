@@ -73,16 +73,9 @@ def download():
     return data, digest
 
 
-def charset():
-    chars = set(chr(c) for c in range(0x20, 0x7F))
-    chars.update(EXTRA)
-    for hi in range(0xB0, 0xF8):           # GB2312 level 1 and 2 hanzi
-        for lo in range(0xA1, 0xFF):
-            try:
-                chars.add(bytes([hi, lo]).decode('gb2312'))
-            except UnicodeDecodeError:
-                pass
-    # Everything the game's own content prints: item and map names, code strings.
+def source_chars():
+    """Every non-ASCII character the game's own content prints: item and map names, code strings."""
+    chars = set()
     sources = [os.path.join(ROOT, 'src', 'main', 'resources')]
     sources.append(os.path.join(ROOT, 'src', 'main', 'java'))
     for base in sources:
@@ -93,6 +86,19 @@ def charset():
                 if name.endswith(('.yml', '.java')):
                     with open(os.path.join(dirpath, name), encoding='utf-8', errors='ignore') as f:
                         chars.update(ch for ch in f.read() if ord(ch) > 0x7F and ch.isprintable())
+    return chars
+
+
+def charset():
+    chars = set(chr(c) for c in range(0x20, 0x7F))
+    chars.update(EXTRA)
+    for hi in range(0xB0, 0xF8):           # GB2312 level 1 and 2 hanzi
+        for lo in range(0xA1, 0xFF):
+            try:
+                chars.add(bytes([hi, lo]).decode('gb2312'))
+            except UnicodeDecodeError:
+                pass
+    chars.update(source_chars())
     chars.discard(' ')
     chars.discard('　')
     return sorted(c for c in chars if ord(c) < 0xFFF0 and not 0xE000 <= ord(c) <= 0xF8FF)

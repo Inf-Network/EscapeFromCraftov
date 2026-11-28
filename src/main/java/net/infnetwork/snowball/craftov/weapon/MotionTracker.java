@@ -12,6 +12,7 @@ import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
@@ -97,9 +98,15 @@ final class MotionTracker {
     private static final double AIR_ACCEL = 0.026;
     /** What a sprint-jump adds to it as the player leaves the ground. */
     private static final double JUMP_BOOST = 0.2;
-    /** Blocks a tick allowed on top of the physics, for rounding and the client's own small pushes. */
+    /**
+     * Blocks a tick allowed on top of the physics, for rounding and the client's own small pushes
+     * (weapons.movement-check.step-margin).
+     */
     private static final double STEP_MARGIN = 0.02;
-    /** Blocks a tick allowed for each other body the player stands in: the client pushes itself out of them. */
+    /**
+     * Blocks a tick allowed for each other body the player stands in: the client pushes itself out of
+     * them (weapons.movement-check.crowd-margin).
+     */
     private static final double CROWD_MARGIN = 0.05;
     /**
      * The speed (blocks a tick) a tick is checked from where the one before is not known: after a
@@ -117,7 +124,7 @@ final class MotionTracker {
      * Server ticks after movement held back for which the player is judged carefully: as fast as they
      * have moved at any time since, and in the {@link #STOP_WINDOW} readings before, and never as
      * stopping. Holding back again, however long, buys nothing; doing it starts the 3 s over. A real
-     * stop counts again once they are over.
+     * stop counts again once they are over (weapons.movement-check.careful-seconds, in seconds).
      */
     private static final int HELD_TICKS = 60;
 
@@ -204,6 +211,15 @@ final class MotionTracker {
     }
 
     private final Map<UUID, Track> tracks = new HashMap<>();
+    private final Plugin plugin;
+
+    MotionTracker(Plugin plugin) {
+        this.plugin = plugin;
+    }
+
+    private double setting(String key, double fallback) {
+        return Math.max(0, plugin.getConfig().getDouble("weapons.movement-check." + key, fallback));
+    }
 
     /** A track that starts again from where the player is now. */
     private static void restart(Track track, Player player, Location at) {
@@ -430,12 +446,13 @@ final class MotionTracker {
         double[] most = reach(n, track.lastStep, track.lastStartGround, track.lastEndGround, ground,
                 track.pace / BLOCKS_PER_SPEED, track.pushTicks > 0 ? track.push : 0);
         double caught = 0;
-        if (moved > most[0] + n * STEP_MARGIN && moved > most[0] + n * (STEP_MARGIN + crowd(player))) {
+        double margin = setting("step-margin", STEP_MARGIN);
+        if (moved > most[0] + n * margin && moved > most[0] + n * (margin + crowd(player, setting("crowd-margin", CROWD_MARGIN)))) {
             caught = moved - most[0];
             if (track.heldTicks <= 0) {
                 track.heldSpeed = 0;
             }
-            track.heldTicks = HELD_TICKS;
+            track.heldTicks = Math.max(1, (int) Math.round(setting("careful-seconds", HELD_TICKS / 20.0) * 20));
             track.caught = String.format("moved=%.3f ticks=%d reach=%d most=%.3f last=%.3f ground=%s%s%s pace=%.3f push=%.2f",
                     moved, ticks, n, most[0], track.lastStep, track.lastStartGround ? "G" : "A", track.lastEndGround ? "G" : "A",
                     ground ? "G" : "A", track.pace, track.pushTicks > 0 ? track.push : 0);
@@ -530,7 +547,7 @@ final class MotionTracker {
     }
 
     /** Blocks a tick the client may push itself out of other bodies it stands in (see {@link #CROWD_MARGIN}). */
-    private static double crowd(Player player) {
+    private static double crowd(Player player, double perBody) {
         BoundingBox body = player.getBoundingBox().expand(0.05);
         int bodies = 0;
         for (Entity other : player.getNearbyEntities(1, 1, 1)) {
@@ -538,7 +555,7 @@ final class MotionTracker {
                 break;
             }
         }
-        return bodies * CROWD_MARGIN;
+        return bodies * perBody;
     }
 
     /**

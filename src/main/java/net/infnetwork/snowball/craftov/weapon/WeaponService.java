@@ -291,7 +291,7 @@ public final class WeaponService implements Listener {
     private final Ballistics ballistics;
     private final GunAudio audio;
     private final ImpactFx fx;
-    private final MotionTracker motion = new MotionTracker();
+    private final MotionTracker motion;
     private final Map<UUID, GunState> states = new HashMap<>();
     /** What guns put away still owe, by gun uid (see {@link Stowed}). */
     private final Map<String, Stowed> stowed = new HashMap<>();
@@ -360,6 +360,7 @@ public final class WeaponService implements Listener {
 
     public WeaponService(CraftovPlugin plugin) {
         this.plugin = plugin;
+        this.motion = new MotionTracker(plugin);
         this.ballistics = new Ballistics(plugin);
         this.audio = new GunAudio(plugin);
         this.fx = new ImpactFx(plugin);

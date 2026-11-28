@@ -160,6 +160,11 @@ final class MotionTracker {
         boolean lastEndGround = true;
         /** Server ticks left in which no step is checked against the physics. */
         int unchecked;
+        /**
+         * Server ticks left after a refused move in which a tick end is no news until the client's next
+         * accepted move (see {@link #setBack}).
+         */
+        int awaitTicks;
         /** A push from the server that may still be arriving: its horizontal speed, and server ticks left. */
         double push;
         int pushTicks;
@@ -236,7 +241,10 @@ final class MotionTracker {
         if (track.claimSet) {
             at.set(track.claimX, track.claimY, track.claimZ);
             track.claimSet = false;
+        } else if (track.awaitTicks > 0 && at.getX() == track.x && at.getY() == track.y && at.getZ() == track.z) {
+            return; // put back and not moved since: the server drops what the client sends until it takes that in
         }
+        track.awaitTicks = 0;
         if (restarted(track, player, at)) {
             return;
         }
@@ -268,7 +276,7 @@ final class MotionTracker {
         // A speed the server lowers (aiming on a sprint, stamina running out, a skill ending, a
         // fracture) reaches the client a round trip later, and until then it honestly moves at the
         // old pace: the window covers that round trip twice over (for jitter) on top of its own ticks.
-        int window = Math.min(PACE_HISTORY, PACE_WINDOW + (int) Math.ceil(Math.max(0, player.getPing()) * 2 / 50.0));
+        int window = settleTicks(player);
         double pace = 0;
         for (int i = 1; i <= window; i++) {
             pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
@@ -282,6 +290,9 @@ final class MotionTracker {
         }
         if (track.unchecked > 0) {
             track.unchecked--;
+        }
+        if (track.awaitTicks > 0) {
+            track.awaitTicks--;
         }
         if (restarted(track, player, at)) {
             return 0;
@@ -470,10 +481,13 @@ final class MotionTracker {
     }
 
     /**
-     * The server refused a move and put the player back where they were (a move into a block, or far
-     * too long): measured from there on, unchecked for a while as after a teleport, since the client
-     * restarts from there with whatever speed it had. The reading is kept: a client that gets itself
-     * put back must not read as standing for it.
+     * The server refused a move and is putting the player back where they were (a move into a block,
+     * or far too long; called as it refuses, while the player is still there): measured from there on,
+     * from the speed of the last tick, since the client restarts from there with at most the speed it
+     * had. Nothing goes unchecked for it, and the reading is kept: a client could get itself put back
+     * at will (issue #171). Until its next accepted move (or a round trip and then some) its tick ends
+     * are no news: the server drops its movement until it has taken the setback in, so they would read
+     * as standing still.
      */
     void setBack(Player player) {
         Track track = tracks.get(player.getUniqueId());
@@ -483,8 +497,16 @@ final class MotionTracker {
             track.y = at.getY();
             track.z = at.getZ();
             track.claimSet = false;
-            track.unchecked = Math.max(track.unchecked, RESET_TICKS);
+            track.awaitTicks = settleTicks(player);
         }
+    }
+
+    /**
+     * Server ticks for something the server tells the client to reach it and come back: {@link
+     * #PACE_WINDOW} and the player's round trip twice over (for jitter).
+     */
+    private static int settleTicks(Player player) {
+        return Math.min(PACE_HISTORY, PACE_WINDOW + (int) Math.ceil(Math.max(0, player.getPing()) * 2 / 50.0));
     }
 
     /**

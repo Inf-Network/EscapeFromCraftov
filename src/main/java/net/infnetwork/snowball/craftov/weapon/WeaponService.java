@@ -2346,7 +2346,8 @@ public final class WeaponService implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onFailMove(PlayerFailMoveEvent event) {
         if (!event.isAllowed()) {
-            Bukkit.getScheduler().runTask(plugin, () -> motion.setBack(event.getPlayer()));
+            // At once: the tick end that comes with the refused move must not read as a step.
+            motion.setBack(event.getPlayer());
         }
     }
 

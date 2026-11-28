@@ -273,6 +273,12 @@ public final class AiService implements Listener {
         return entity != null && bots.containsKey(entity.getUniqueId());
     }
 
+    /** A plain soldier: neither a boss nor a boss's guard (those are tougher by design). */
+    public boolean isGrunt(@Nullable Entity entity) {
+        Bot bot = entity == null ? null : bots.get(entity.getUniqueId());
+        return bot != null && !bot.boss;
+    }
+
     /**
      * One line per soldier of a raid for /cv ai: name, kind, position and facing, what it is doing,
      * whom it is fighting and how aware it is of each player it has half noticed, and its UUID.
@@ -973,7 +979,7 @@ public final class AiService implements Listener {
     }
 
     private long reactionTicks(Bot bot) {
-        double base = plugin.getConfig().getDouble("ai.reaction-ticks", 14);
+        double base = plugin.getConfig().getDouble("ai.reaction-ticks", 18);
         return Math.round(base / Math.max(0.3, bot.accuracy) + ThreadLocalRandom.current().nextInt(0, 8));
     }
 
@@ -1300,7 +1306,7 @@ public final class AiService implements Listener {
         // A share of what a player deals with the same gun and ammo to the body and limbs (headshots
         // get less: scaledGun halves the head multiplier); nothing scales it again on the way
         // (DamageService.deal keeps vanilla's difficulty scaling out of hits on players).
-        GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.65) * (bot.boss ? 1.15 : 1.0));
+        GunSpec scaled = scaledGun(gun, plugin.getConfig().getDouble("ai.damage-multiplier", 0.55) * (bot.boss ? 1.15 : 1.0));
         int hits = 0;
         for (int i = 0; i < gun.pellets(); i++) {
             LivingEntity hit = plugin.weapons().ballistics().fire(bot.mob, eye,

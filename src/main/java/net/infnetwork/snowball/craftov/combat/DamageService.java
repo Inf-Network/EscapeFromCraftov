@@ -623,6 +623,12 @@ public final class DamageService implements Listener {
         double base = spec.damage();
         ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
         double damage = base * meleeZoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
+        if (part == BodyPart.HEAD && plugin.ai().isGrunt(victim)
+                && plugin.getConfig().getBoolean("combat.melee.soldier-head-kill", true)) {
+            // A knife to the head finishes a plain soldier outright, helmet or not (the owner's
+            // call: sneaking up on one should pay off). Bosses and their guards are excluded.
+            damage = Math.max(damage, victim.getHealth() + 1);
+        }
         if (armorHit.penetrated() && part != BodyPart.HEAD) {
             rollInjuries(victim, part, damage, player);
         }

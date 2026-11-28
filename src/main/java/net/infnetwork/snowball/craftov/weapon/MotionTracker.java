@@ -67,6 +67,11 @@ final class MotionTracker {
      * stops sprinting or a speed boost wears off), so the pace to beat is the highest one lately.
      */
     private static final int PACE_WINDOW = 10;
+    /**
+     * How many server ticks of paces are kept: the window is stretched by the player's round trip,
+     * up to this, since the client keeps moving at the old speed until a lowered speed reaches it.
+     */
+    private static final int PACE_HISTORY = 80;
     /** Ticks of measured speed remembered to tell a stop from a steady walk (see {@link #stopping}). */
     private static final int STOP_WINDOW = 6;
     /**
@@ -125,7 +130,7 @@ final class MotionTracker {
         /** Steps recorded since the last reading. */
         int newSteps;
         /** The walking pace the movement-speed attribute allowed in each of the last server ticks. */
-        final double[] paces = new double[PACE_WINDOW];
+        final double[] paces = new double[PACE_HISTORY];
         int nextPace;
         boolean pacesSet;
         /** The highest of {@link #paces}: the pace to compare with. */
@@ -259,10 +264,14 @@ final class MotionTracker {
             track.pacesSet = true;
         }
         track.paces[track.nextPace] = walk;
-        track.nextPace = (track.nextPace + 1) % PACE_WINDOW;
+        track.nextPace = (track.nextPace + 1) % PACE_HISTORY;
+        // A speed the server lowers (aiming on a sprint, stamina running out, a skill ending, a
+        // fracture) reaches the client a round trip later, and until then it honestly moves at the
+        // old pace: the window covers that round trip twice over (for jitter) on top of its own ticks.
+        int window = Math.min(PACE_HISTORY, PACE_WINDOW + (int) Math.ceil(Math.max(0, player.getPing()) * 2 / 50.0));
         double pace = 0;
-        for (double p : track.paces) {
-            pace = Math.max(pace, p);
+        for (int i = 1; i <= window; i++) {
+            pace = Math.max(pace, track.paces[Math.floorMod(track.nextPace - i, PACE_HISTORY)]);
         }
         track.pace = pace;
         if (track.heldTicks > 0) {

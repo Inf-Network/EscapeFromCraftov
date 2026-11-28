@@ -623,6 +623,12 @@ public final class DamageService implements Listener {
         double base = spec.damage();
         ArmorHit armorHit = armor(victim, part, base, spec.penetration(), spec.armorDamage());
         double damage = base * meleeZoneMultiplier(part, spec.headMultiplier()) * armorHit.damageMult();
+        if (part == BodyPart.HEAD && plugin.ai().isGrunt(victim)
+                && plugin.getConfig().getBoolean("combat.melee.soldier-head-kill", true)) {
+            // A knife to the head finishes a plain soldier outright, helmet or not (the owner's
+            // call: sneaking up on one should pay off). Bosses and their guards are excluded.
+            damage = Math.max(damage, victim.getHealth() + 1);
+        }
         if (armorHit.penetrated() && part != BodyPart.HEAD) {
             rollInjuries(victim, part, damage, player);
         }
@@ -659,6 +665,20 @@ public final class DamageService implements Listener {
                 Math.max(box.getMinX(), Math.min(box.getMaxX(), along.getX())),
                 Math.max(box.getMinY(), Math.min(box.getMaxY(), along.getY())),
                 Math.max(box.getMinZ(), Math.min(box.getMaxZ(), along.getZ())));
+    }
+
+    /** A knife swung at raid glass breaks it, as a round does. */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onKnifeGlass(org.bukkit.event.player.PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.LEFT_CLICK_BLOCK || event.getClickedBlock() == null
+                || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND) {
+            return;
+        }
+        Player player = event.getPlayer();
+        ItemDef def = plugin.items().defOf(player.getInventory().getItemInMainHand());
+        if (def != null && def.isMelee() && plugin.raids().canAttack(player)) {
+            plugin.weapons().ballistics().breakGlass(event.getClickedBlock());
+        }
     }
 
     /** Guns and tactical items are not melee weapons; punches do token damage only. */

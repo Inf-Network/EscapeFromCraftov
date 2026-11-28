@@ -3,6 +3,10 @@
 //   gear     no rig or backpack (#184, #176): Q on the worn vest in the lobby leaves it on, a gold bar
 //            given lands in a pocket and a second vest does not, and a shift-click on the worn vest
 //            puts it into the stash.
+//   gun      #180, a proving-ground raid with no rig or backpack: a gun thrown from the hand (Q in
+//            the inventory screen) is picked up again onto key 1 without switching slots; Q on the
+//            own K47 with only armory 7.62 rounds in a pocket names the armory rule, and with own
+//            rounds there finds them.
 //   zones    a new account (starter rig_1 + pack_1): each carry zone has locked cells, and exactly
 //            one of them per zone shows a tooltip. Ammo, a gold bar, a rifle and a bandage given
 //            land where their category goes: ammo and the bandage on a free quick key (4-8), the
@@ -52,7 +56,7 @@
 //            shift-clicked into the box and worn again with a right click, and take all. Each case
 //            also checks that the click did what it should (the cell emptied, the item arrived).
 //
-//   PORT=25565 RCON_PORT=25575 node carryui.js [gear zones rules matrix info cursor stash trader preset secure loot ghost]
+//   PORT=25565 RCON_PORT=25575 node carryui.js [gear gun zones rules matrix info cursor stash trader preset secure loot ghost]
 //
 // The server needs test.enabled (secure, loot and ghost queue for the proving ground). Bots use random
 // names (new accounts with the starter kit); trader, preset and secure prepare the profile by
@@ -430,6 +434,72 @@ async function gear () {
   await leave(bot)
   const stashed = (readProfile(bot.username).stash || []).filter(r => r.id === vest).length
   check('gear: shift-click on the worn vest with no backpack puts it in the stash', !worn && onBot === 0 && stashed === 1, { worn, onBot, stashed, msgs: bot.msgs.slice(-3) })
+}
+
+/**
+ * A gun dropped from the hand (#180), in a proving-ground raid with no rig or backpack: Q in the
+ * inventory screen on key 1 while holding it throws it, and walking onto it puts it back on key 1
+ * (it used to stay on the ground until the player switched slots). Then the reload: with only
+ * armory 7.62 rounds in the pockets, Q on the own K47 names the armory rule instead of saying
+ * there are none; with own rounds in a pocket it finds them (the magazine is full).
+ */
+async function gun () {
+  const bot = await make('Cd')
+  await settle(bot)
+  await cmd(`item replace entity ${bot.username} armor.legs with air`)
+  await cmd(`item replace entity ${bot.username} armor.feet with air`)
+  bot._client.write('close_window', { windowId: 0 })
+  bot.chat('/cv queue proving NORMAL SOLO')
+  const inRaid = () => bot.worldName.startsWith('craftov_raid_') && bot.game.gameMode === 'adventure'
+  if (!await waitFor(inRaid, 150000)) return check('gun: in a raid', false, bot.worldName)
+  await sleep(6000)
+  bot.setQuickBarSlot(0)
+  await settle(bot, 600)
+  const held = idOf(bot.inventory.slots[36])
+  const other = idOf(bot.inventory.slots[37])
+  rawClick(bot, 0, 36, 0, 4) // Q on key 1 in the inventory screen
+  await settle(bot, 600)
+  check('gun: Q throws the gun in hand', !!held && !!other && !bot.inventory.slots[36], { held, other, now: idOf(bot.inventory.slots[36]) })
+  bot._client.write('close_window', { windowId: 0 })
+  await sleep(500)
+  await cmd(`execute as ${bot.username} at @e[type=item,sort=nearest,limit=1] run tp ${bot.username} ~ ~ ~`)
+  await waitFor(() => idOf(bot.inventory.slots[36]) === held, 5000)
+  check('gun: walking onto it puts it back on key 1 without switching slots', idOf(bot.inventory.slots[36]) === held,
+    { key1: idOf(bot.inventory.slots[36]), heldSlot: bot.quickBarSlot })
+
+  // Reload: armory rounds only, then own rounds, both in a pocket.
+  await cmd(`clear ${bot.username} *[minecraft:custom_data~{PublicBukkitValues:{"craftov:id":"ammo_762_ps"}}]`)
+  await cmd(`execute as ${bot.username} at @s run tp @s 21.5 65 78.9 180 20`)
+  await sleep(1200)
+  const target = bot.nearestEntity(e => e.name === 'interaction')
+  const w = target && await openWith(bot, () => bot.activateEntity(target))
+  if (!w) return check('gun: the armory ammo box opens', false)
+  await waitFor(() => BOX_CELLS.every(raw => !json(w.slots[raw]).includes('search_')), 60000)
+  await settle(bot)
+  const cell = BOX_CELLS.find(raw => idOf(w.slots[raw]) === 'ammo_762_ps')
+  if (cell === undefined) return check('gun: the armory has 7.62x39 PS', false)
+  rawClick(bot, w.id, cell, 0, 0) // a left click takes it
+  await settle(bot)
+  bot.closeWindow(w)
+  await sleep(600)
+  const test = QUICK.filter(i => idOf(bot.inventory.slots[i]) === 'ammo_762_ps' && isTest(bot.inventory.slots[i]))
+  bot.setQuickBarSlot(0)
+  await sleep(300)
+  const q = async () => {
+    bot.msgs.length = 0
+    bot._client.write('block_dig', { status: 4, location: { x: 0, y: 0, z: 0 }, face: 0, sequence: 0 })
+    await sleep(800)
+    return bot.msgs.join(' | ')
+  }
+  const armory = await q()
+  check('gun: armory rounds in a pocket are named, not "none"', test.length > 0 && armory.includes('试验场弹药'), { test, said: armory })
+  await cmd(`cv give ${bot.username} ammo_762_ps 30`)
+  await settle(bot, 600)
+  const own = await q()
+  check('gun: own rounds in a pocket are found (the magazine is full)', own.includes('弹匣已满'), own)
+  await cmd(`execute as ${bot.username} at @s run tp @s 106.5 65 8.5`)
+  await waitFor(() => !inRaid(), 40000)
+  bot.quit()
 }
 
 async function stash () {
@@ -958,7 +1028,7 @@ async function ghost () {
 }
 
 ;(async () => {
-  const all = { gear, zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
+  const all = { gear, gun, zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
   for (const name of scenarios) {
     try {
       await all[name]()

@@ -18,7 +18,7 @@ import java.util.List;
 public final class Text {
 
     private static final MiniMessage MM = MiniMessage.builder()
-            .tags(TagResolver.resolver(TagResolver.standard(), Style.tags())).build();
+            .tags(TagResolver.resolver(TagResolver.standard(), Style.tags())).build(); // later resolvers win: <b> is the heavy face
 
     private Text() {
     }

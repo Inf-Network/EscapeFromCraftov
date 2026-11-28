@@ -44,7 +44,12 @@ public final class Style {
     private static final TagResolver TAGS = TagResolver.resolver(
             color("text", TEXT), color("muted", MUTED), color("dim", DIM), color("accent", ACCENT),
             color("ok", OK), color("danger", DANGER), color("info", INFO),
-            TagResolver.resolver("heavy", Tag.styling(style -> style.font(HEAVY_FONT))));
+            TagResolver.resolver("heavy", Tag.styling(style -> style.font(HEAVY_FONT))),
+            // The client draws <b> as the text twice, 1 px apart: the rounded font's thin strokes then
+            // show a gap between the copies and read as a ghost (#181, and in every tooltip title).
+            // Bold everywhere is the font's own heavy face instead; glyphs it lacks fall back to the
+            // regular face through bold.json's reference provider.
+            TagResolver.resolver(java.util.Set.of("b", "bold"), (args, ctx) -> Tag.styling(style -> style.font(HEAVY_FONT))));
 
     private Style() {
     }

@@ -521,7 +521,7 @@ final class MotionTracker {
             return true;
         }
         Location at = player.getLocation();
-        Material below = at.clone().subtract(0, 0.2, 0).getBlock().getType();
+        Material below = underfoot(at);
         return at.getBlock().getType() == Material.POWDER_SNOW || below == Material.SLIME_BLOCK || below.name().contains("ICE");
     }
 
@@ -618,7 +618,15 @@ final class MotionTracker {
         if (!grounded(player) || player.isInsideVehicle() || player.isFlying() || player.isGliding() || player.isSwimming()) {
             return false;
         }
-        return !player.getLocation().subtract(0, 0.2, 0).getBlock().getType().name().contains("ICE");
+        return !underfoot(player.getLocation()).name().contains("ICE");
+    }
+
+    /**
+     * The block whose grip the player moves on, where vanilla looks for it: 0.500001 below the feet.
+     * 0.2 found the slab, not the ice under it, for a player on a bottom slab laid on ice.
+     */
+    private static Material underfoot(Location feet) {
+        return feet.clone().subtract(0, 0.500001, 0).getBlock().getType();
     }
 
     /**

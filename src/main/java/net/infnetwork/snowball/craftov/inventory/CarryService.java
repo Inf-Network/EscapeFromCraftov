@@ -229,9 +229,23 @@ public final class CarryService {
         return out;
     }
 
-    /** {@link #route} for what the player wears now. */
+    /**
+     * {@link #route} for what the player wears now. Loot stays out of the held slot, except a gun
+     * when that slot is an empty gun key: nothing in hand turns into it, and with the other gun key
+     * taken and no backpack cell free, a gun just dropped from the hand could otherwise not be
+     * picked up again until the player switched slots (#180). It is tried last there.
+     */
     public List<Integer> route(Player player, @Nullable ItemStack stack, boolean looting) {
-        return route(stack, rigCapacity(player), backpackCapacity(player), looting ? player.getInventory().getHeldItemSlot() : -1);
+        int held = player.getInventory().getHeldItemSlot();
+        List<Integer> out = route(stack, rigCapacity(player), backpackCapacity(player), looting ? held : -1);
+        ItemStack inHand = player.getInventory().getItem(held);
+        ItemDef def = items.defOf(stack);
+        if (looting && GUN_KEYS.contains(held) && (inHand == null || inHand.isEmpty())
+                && def != null && def.category() == Category.WEAPON) {
+            out = new ArrayList<>(out);
+            out.add(held);
+        }
+        return out;
     }
 
     private static List<Integer> usableSlots(int rig, int pack) {

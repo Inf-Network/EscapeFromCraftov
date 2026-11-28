@@ -962,7 +962,11 @@ def build_pack_meta():
 # Placement: the vitals sit in the bottom-left band below the chat (the chat's bottom line is 40 px above
 # the screen edge) and stop short of the offhand slot even on a 426 px wide GUI (1280x720 at scale 3);
 # the weapon panel sits bottom-right above the hotbar's height; info and the squad top-left, the kill
-# feed top-right, alerts under the compass, prompts and progress under the crosshair.
+# feed top-right, prompts and progress under the crosshair. Alerts close the top-left column (#178):
+# under the compass, a banner wide enough for them overlapped the info panel on any GUI narrower
+# than about 580 px (1920x1080 at the auto GUI scale 4 is 480), and at 300 px its picture was too
+# wide for the client's 256 px glyph pages, so the client drew a missing-glyph box in its place and
+# the 296 px BetterHud had counted for it pushed the whole HUD sideways.
 
 TEXT, MUTED, DIM, ACCENT_HEX = palette.TEXT, palette.MUTED, palette.DIM, palette.ACCENT
 OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
@@ -976,7 +980,9 @@ HUD_IMAGES = {
     # The new-player guide's objective line: wide in the lobby, the squad rows' width in a raid, where
     # the kill feed's rows reach in from the right on a 320 px wide GUI.
     'craftov/panel_objective.png': lambda: hudart.panel(200, 12, accent=rgb(palette.ACCENT)),
-    'craftov/alert_band.png': lambda: hudart.band(300, 14),
+    # The alert banner: one row per line of text, the rows after the first without the top edge.
+    'craftov/panel_alert.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT)),
+    'craftov/panel_alert_more.png': lambda: hudart.panel(132, 12, accent=rgb(palette.ACCENT), top=False),
     # Behind the interaction prompt, which is amber or white text that vanished on a sunlit floor.
     'craftov/prompt_band.png': lambda: hudart.band(200, 12, accent=rgb(palette.LINE)),
     'craftov/hp_empty.png': lambda: hudart.bar(64, 3, (0, 0, 0, 0), empty=True),
@@ -1051,6 +1057,30 @@ def image(name, x, y, conditions=None):
     return i
 
 
+ALERT_LINES = 3  # HudService.ALERT_LINES
+
+
+def alert_layout(*conditions):
+    rows = range(1, ALERT_LINES + 1)
+    return {'images': numbered([image('craftov_panel_alert' if i == 1 else 'craftov_panel_alert_more', 0, 12 * (i - 1),
+                                      cond(('craftov_has_alert_%d' % i, 'true'))) for i in rows]),
+            'texts': numbered([text('[craftov_alert_%d]' % i, 6, 12 * (i - 1)) for i in rows]),
+            'conditions': cond(('craftov_has_alert_1', 'true'), *conditions)}
+
+
+def hud_font_widths():
+    """ui/hud_font.json for HudFont (the server breaks the alert banner into rows): how far the HUD's
+    text font moves after each character, listing only those that do not advance as far as a hanzi."""
+    _, rows, _ = pixelfont.load()
+    default = pixelfont.advance('中')
+    advances = {' ': pixelfont.advance(' ')}
+    for row in rows:
+        for ch in row:
+            if ch != '\0' and pixelfont.advance(ch) != default:
+                advances[ch] = pixelfont.advance(ch)
+    write_json(os.path.join(RES, 'ui', 'hud_font.json'), {'default': default, 'advances': advances})
+
+
 def numbered(items):
     return {str(i): v for i, v in enumerate(items, 1)}
 
@@ -1087,7 +1117,7 @@ def build_betterhud():
     for part in hudart.BODY_PARTS:
         for state in range(len(hudart.BODY_STATES)):
             save(hudart.body_part(part, state), os.path.join(BH, 'assets', 'craftov', 'body', '%s_%d.png' % (part, state)))
-    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'panel_objective', 'alert_band', 'prompt_band', 'hp_empty', 'armor_empty',
+    singles = ['panel_vitals', 'panel_weapon', 'panel_info', 'panel_mate', 'panel_skill', 'panel_objective', 'panel_alert', 'panel_alert_more', 'prompt_band', 'hp_empty', 'armor_empty',
                'progress_empty', 'stamina_empty', 'hit', 'hit_head', 'hit_kill', 'hit_knock',
                'icon_bleed', 'icon_heavy', 'icon_fracture', 'icon_pain'] + ['damage_%d' % i for i in range(8)]
     images = {'craftov_' + n: {'type': 'single', 'file': 'craftov/%s.png' % n} for n in singles}
@@ -1115,6 +1145,7 @@ def build_betterhud():
 
     # craftov_font: vanilla's ASCII bitmap, used only at scale 1.0 for big digits. BetterHud bundles
     # unifont glyphs only for the listed languages, so "china" keeps a stray CJK character from being tofu.
+    hud_font_widths()
     texts = {'craftov_font': {'merge-default-bitmap': True, 'use-unifont': True, 'include': ['china']},
              'craftov_pixel': hud_pixel_font()}
     write_text(os.path.join(BH, 'texts', 'craftov.yml'), yaml.safe_dump(texts, allow_unicode=True, sort_keys=False))
@@ -1202,11 +1233,14 @@ def build_betterhud():
             'conditions': cond(('craftov_in_raid', 'true'), ('craftov_has_objective', 'true'),
                                *(('craftov_has_mate_%d' % i, 'true' if i <= mates else 'false') for i in (1, 2))),
         } for mates in (0, 1, 2)},
-        'craftov_alert': {
-            'images': numbered([image('craftov_alert_band', 0, 0)]),
-            'texts': numbered([text('[craftov_alert]', 150, 1, align='center')]),
-            'conditions': cond(('craftov_has_alert', 'true')),
-        },
+        # The alert banner (HudService#alert, which breaks the text into rows of ALERT_WIDTH px) at the
+        # bottom of the top-left column, one layout per set of rows above it like the objective's.
+        **{'craftov_alert_raid_%d_%s' % (mates, objective): alert_layout(
+            ('craftov_in_raid', 'true'), ('craftov_has_objective', objective),
+            *(('craftov_has_mate_%d' % i, 'true' if i <= mates else 'false') for i in (1, 2)))
+           for mates in (0, 1, 2) for objective in ('false', 'true')},
+        **{'craftov_alert_lobby_%s' % objective: alert_layout(('craftov_in_lobby', 'true'), ('craftov_has_objective', objective))
+           for objective in ('false', 'true')},
         'craftov_prompt': {
             'images': numbered([image('craftov_prompt_band', 0, -1)]),
             'texts': numbered([text('[craftov_prompt]', 100, 0, align='center')]),
@@ -1283,7 +1317,10 @@ def build_betterhud():
         # (32 px; Craftov's own effects carry no icon): at the very top a kill's "Monster Hunter" toast
         # hid it. Its last row ends at 100, above the chat on a 240 px high GUI (1280x720 at scale 3).
         *[place('craftov_feed_%d' % i, 100, 0, -6, 40 + 12 * (i - 1)) for i in FEED_LINES],
-        place('craftov_alert', 50, 0, -150, 30),
+        *[place('craftov_alert_raid_%d_%s' % (mates, objective), 0, 0, 4, 66 + 13 * mates + (13 if objective == 'true' else 0))
+          for mates in (0, 1, 2) for objective in ('false', 'true')],
+        *[place('craftov_alert_lobby_%s' % objective, 0, 0, 4, 51 + (13 if objective == 'true' else 0))
+          for objective in ('false', 'true')],
         place('craftov_prompt', 50, 50, -100, 14),
         place('craftov_extract', 50, 50, -60, 26),
         place('craftov_downed', 50, 50, -60, 40),

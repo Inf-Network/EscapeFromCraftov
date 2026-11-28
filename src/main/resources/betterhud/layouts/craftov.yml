@@ -938,24 +938,595 @@ craftov_objective_raid_2:
       second: 'true'
       operation: ==
   offset: left
-craftov_alert:
+craftov_alert_raid_0_false:
   images:
     '1':
-      name: craftov_alert_band
+      name: craftov_panel_alert
       x: 0
       y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
   texts:
     '1':
       name: craftov_pixel
-      pattern: '[craftov_alert]'
-      x: 150
-      y: 10
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
       scale: 1.0
-      align: center
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
       outline: true
   conditions:
     '1':
-      first: craftov_has_alert
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'false'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_0_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'false'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_1_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_1_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_raid_2_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_alert_raid_2_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_raid
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'true'
+      operation: ==
+    '4':
+      first: craftov_has_mate_1
+      second: 'true'
+      operation: ==
+    '5':
+      first: craftov_has_mate_2
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_alert_lobby_false:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
+      second: 'false'
+      operation: ==
+  offset: left
+craftov_alert_lobby_true:
+  images:
+    '1':
+      name: craftov_panel_alert
+      x: 0
+      y: 0
+      conditions:
+        '1':
+          first: craftov_has_alert_1
+          second: 'true'
+          operation: ==
+    '2':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 12
+      conditions:
+        '1':
+          first: craftov_has_alert_2
+          second: 'true'
+          operation: ==
+    '3':
+      name: craftov_panel_alert_more
+      x: 0
+      y: 24
+      conditions:
+        '1':
+          first: craftov_has_alert_3
+          second: 'true'
+          operation: ==
+  texts:
+    '1':
+      name: craftov_pixel
+      pattern: '[craftov_alert_1]'
+      x: 6
+      y: 9
+      scale: 1.0
+      align: left
+      outline: true
+    '2':
+      name: craftov_pixel
+      pattern: '[craftov_alert_2]'
+      x: 6
+      y: 21
+      scale: 1.0
+      align: left
+      outline: true
+    '3':
+      name: craftov_pixel
+      pattern: '[craftov_alert_3]'
+      x: 6
+      y: 33
+      scale: 1.0
+      align: left
+      outline: true
+  conditions:
+    '1':
+      first: craftov_has_alert_1
+      second: 'true'
+      operation: ==
+    '2':
+      first: craftov_in_lobby
+      second: 'true'
+      operation: ==
+    '3':
+      first: craftov_has_objective
       second: 'true'
       operation: ==
   offset: left

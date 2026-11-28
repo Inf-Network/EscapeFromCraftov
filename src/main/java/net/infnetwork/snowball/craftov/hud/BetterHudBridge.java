@@ -110,6 +110,11 @@ public final class BetterHudBridge implements BetterHudHook {
         }
         string(pm, "craftov_alert", s -> s.extra().alert());
         bool(pm, "craftov_has_alert", s -> !s.extra().alert().isEmpty());
+        for (int i = 0; i < HudService.ALERT_LINES; i++) {
+            int index = i;
+            string(pm, "craftov_alert_" + (i + 1), s -> s.extra().alertLine(index));
+            bool(pm, "craftov_has_alert_" + (i + 1), s -> !s.extra().alertLine(index).isEmpty());
+        }
         string(pm, "craftov_prompt", s -> s.extra().prompt());
         bool(pm, "craftov_has_prompt", s -> !s.extra().prompt().isEmpty());
         string(pm, "craftov_objective", s -> s.extra().objective());

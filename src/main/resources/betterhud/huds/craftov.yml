@@ -113,55 +113,55 @@ craftov_hud:
         x: -6
         y: 88
     '15':
-      name: craftov_alert
-      gui:
-        x: 50
-        y: 0
-      pixel:
-        x: -150
-        y: 30
-    '16':
-      name: craftov_prompt
-      gui:
-        x: 50
-        y: 50
-      pixel:
-        x: -100
-        y: 14
-    '17':
-      name: craftov_extract
-      gui:
-        x: 50
-        y: 50
-      pixel:
-        x: -60
-        y: 26
-    '18':
-      name: craftov_downed
-      gui:
-        x: 50
-        y: 50
-      pixel:
-        x: -60
-        y: 40
-    '19':
-      name: craftov_med
-      gui:
-        x: 50
-        y: 50
-      pixel:
-        x: -60
-        y: 58
-    '20':
-      name: craftov_lobby
+      name: craftov_alert_raid_0_false
       gui:
         x: 0
         y: 0
       pixel:
         x: 4
-        y: 4
+        y: 66
+    '16':
+      name: craftov_alert_raid_0_true
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 79
+    '17':
+      name: craftov_alert_raid_1_false
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 79
+    '18':
+      name: craftov_alert_raid_1_true
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 92
+    '19':
+      name: craftov_alert_raid_2_false
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 92
+    '20':
+      name: craftov_alert_raid_2_true
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 105
     '21':
-      name: craftov_objective
+      name: craftov_alert_lobby_false
       gui:
         x: 0
         y: 0
@@ -169,6 +169,62 @@ craftov_hud:
         x: 4
         y: 51
     '22':
+      name: craftov_alert_lobby_true
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 64
+    '23':
+      name: craftov_prompt
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -100
+        y: 14
+    '24':
+      name: craftov_extract
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 26
+    '25':
+      name: craftov_downed
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 40
+    '26':
+      name: craftov_med
+      gui:
+        x: 50
+        y: 50
+      pixel:
+        x: -60
+        y: 58
+    '27':
+      name: craftov_lobby
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 4
+    '28':
+      name: craftov_objective
+      gui:
+        x: 0
+        y: 0
+      pixel:
+        x: 4
+        y: 51
+    '29':
       name: craftov_streak
       gui:
         x: 50

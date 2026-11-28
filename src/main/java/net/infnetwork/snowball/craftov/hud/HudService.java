@@ -20,6 +20,7 @@ import org.bukkit.potion.PotionEffectType;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -56,8 +57,21 @@ public final class HudService {
     private final Map<UUID, String> shownOverlay = new HashMap<>();
     private final Map<UUID, Long> lastShake = new HashMap<>();
 
-    /** A line shown until a tick: the alert banner (BetterHud only). */
-    private record Timed(String text, long until) {
+    /**
+     * The alert banner (BetterHud only) until a tick: its text and the rows it is drawn in. The banner
+     * is the bottom of the top-left panel column, ALERT_WIDTH px of text a row, so it can never sit on
+     * another panel at any screen size (#178).
+     */
+    private record Timed(String text, String[] lines, long until) {
+    }
+
+    /** Rows of the alert banner and the text width of one (its panel is 132 px, 6 px padding each side). */
+    public static final int ALERT_LINES = 3;
+    public static final int ALERT_WIDTH = 120;
+    private static final String[] NO_ALERT = new String[ALERT_LINES];
+
+    static {
+        java.util.Arrays.fill(NO_ALERT, "");
     }
 
     private final Map<UUID, Timed> alerts = new HashMap<>();
@@ -105,7 +119,7 @@ public final class HudService {
         boolean marked = objective != null && objective.target() != null && (!inRaid || raid != null && raid.training());
         return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
                 gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
-                alert == null ? "" : alert.text(), inRaid || inLobby ? data.prompt(player) : "",
+                alert == null ? "" : alert.text(), alert == null ? NO_ALERT : alert.lines(), inRaid || inLobby ? data.prompt(player) : "",
                 data.objective(player, objective), marked);
     }
 
@@ -122,7 +136,13 @@ public final class HudService {
             player.sendMessage(Text.mm(text));
             return;
         }
-        alerts.put(player.getUniqueId(), new Timed(net.infnetwork.snowball.craftov.gui.Style.hex(text), Bukkit.getCurrentTick() + ticks));
+        String hex = net.infnetwork.snowball.craftov.gui.Style.hex(text);
+        String[] lines = NO_ALERT.clone();
+        List<String> wrapped = HudFont.wrap(hex, ALERT_WIDTH, ALERT_LINES);
+        for (int i = 0; i < wrapped.size(); i++) {
+            lines[i] = wrapped.get(i);
+        }
+        alerts.put(player.getUniqueId(), new Timed(hex, lines, Bukkit.getCurrentTick() + ticks));
     }
 
     /** A plain kill-feed line (squad news; KillFeedService#note): top right, chat without BetterHud. */

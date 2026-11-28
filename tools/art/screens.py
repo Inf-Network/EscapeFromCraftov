@@ -395,10 +395,19 @@ def deploy_screen(queued=False):
     return s.done()
 
 
+STASH_GEAR = ((15, 'helmet'), (24, 'chestplate'), (33, 'leggings'), (42, 'boots'))
+"""Stash loadout panel, worn column: helmet, body armour, rig and backpack (StashMenu.GEAR)."""
+STASH_KEYS = ((16, 'gun'), (17, 'gun'), (25, 'knife'), (26, 'pocket'), (34, 'pocket'), (35, 'pocket'),
+              (43, 'pocket'), (44, 'pocket'))
+"""Stash loadout panel, hotbar keys 1-8 two to a row (StashMenu.KEYS)."""
+
+
 def stash_screen(tab):
     """Stash (#10): nine category tabs along the top with the chosen one lit (one screen per tab, so
-    the tab shows even under the pointer), four rows of stored items, and the control bar (pages,
-    sort, multi-select, sell, capacity, mail, secure container, more room)."""
+    the tab shows even under the pointer), four rows of stored items in six columns, the loadout panel
+    on the right (#185: worn helmet, vest, rig and backpack, then keys 1-8 two to a row, each empty
+    well showing what goes there), and the control bar (pages, sort, multi-select, sell, capacity,
+    mail, secure container, more room)."""
     def make():
         s = Screen(6)
         s.toolbar(0)
@@ -411,7 +420,30 @@ def stash_screen(tab):
             if on:
                 # The tab's icon covers the inner 16x16: the frame round it shows.
                 s.d.rectangle([x, y, x + 17, y + 17], outline=rgb(P.ACCENT))
-        s.wells(slots(1, 0, 4, 8))
+        s.wells(slots(1, 0, 4, 5))
+        # The loadout panel, set off from the stored items by a divider (drawn over the gear wells'
+        # left edge, since the cells have no gutter between them).
+        x = 7 + 6 * 18
+        _, y0 = slot_xy(9)
+        _, y1 = slot_xy(36)
+        for i, kind in STASH_GEAR:
+            cx, cy = slot_xy(i)
+            if kind == 'leggings':
+                zone_well(s.img, cx, cy, 'rig')
+            elif kind == 'boots':
+                zone_well(s.img, cx, cy, 'pack')
+            else:
+                well(s.img, cx, cy)
+            s.img.alpha_composite(silhouette(kind), (cx + 1, cy + 1))
+        for i, kind in STASH_KEYS:
+            cx, cy = slot_xy(i)
+            well(s.img, cx, cy)
+            hint(s.img, cx, cy, kind)
+        s.d.line([x, y0 - 1, x, y1 + 16], fill=mix(rgb(P.ACCENT), rgb(P.PANEL), 0.55))
+        # Keys 1-8 sit in a frame in the hotbar's accent, so they read as the keys, not more stash.
+        kx0, ky0 = slot_xy(16)
+        kx1, ky1 = slot_xy(44)
+        s.d.rectangle([kx0 - 1, ky0 - 1, kx1 + 18, ky1 + 16], outline=mix(rgb(P.ACCENT), rgb(P.PANEL), 0.55))
         s.toolbar(5).wells(slots(5, 0, 5, 8))
         return s.done()
     return make

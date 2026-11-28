@@ -230,7 +230,7 @@ async function kit () {
   if (again >= 0) { await k.clickWindow(bottom(w, again), 0, 0); await sleep(500) }
   w = k.currentWindow || w // the stash retitles itself on a deposit
   let listSlot = -1
-  for (let s = 9; s < 45; s++) if (idOf(w.slots[s]) === 'medkit_s' && isKit(w.slots[s])) listSlot = s
+  for (let s = 9; s < 45; s++) if (s % 9 < 6 && idOf(w.slots[s]) === 'medkit_s' && isKit(w.slots[s])) listSlot = s
   mark = k.msgs.length
   let priceMenu = null
   // A right-click lists an item on the market (#10: the stash has no modes).

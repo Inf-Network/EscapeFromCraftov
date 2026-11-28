@@ -32,10 +32,16 @@ import java.util.Set;
  * <pre>
  *  0-8    category tabs: all, weapons (melee too), ammo, armour, carry, meds, valuables and
  *         collectibles, keys and special items, attachments and grenades
- *  9-44   36 items a page
+ *  rows 1-4, columns 0-5   24 items a page
+ *  column 6 (15 24 33 42)  worn helmet, vest, rig, backpack      columns 7-8  keys 1-8, two a row
  *  45 ◀   46 sort (value / rarity / category / newest)   47 multi-select   48 sell the selection
  *  49 room used and total value   50 mailbox   51 secure container   52 more room   53 ▶
  * </pre>
+ * The loadout panel on the right (#185) shows what the player wears and has on keys 1-8, so a
+ * loadout can be put together here: a click on one of them puts it into the stash (a rig or
+ * backpack with everything packed inside it), and taking gear out puts it on. Taking out a helmet,
+ * vest, rig or backpack with no room for it on the player swaps it for the worn one, which goes
+ * into the stash. The knife stays on key 3.
  * There are no modes: left takes an item out, right lists it on the market, shift (or any click
  * while multi-select is on) picks it. Selling only ever sells the selection, and only on a second
  * click of the sell button within five seconds of the first. Items wear a corner mark for their value
@@ -88,8 +94,16 @@ final class StashMenu extends Menu {
     /** custom_model_data strings the item models read the corner marks from (tools/art/build.py, gui_case). */
     private static final int BADGE_VALUE = 6;
     private static final int BADGE_PLUS = 7;
-    private static final int CELLS = 36;
-    private static final int FIRST_CELL = 9;
+    private static final int CELLS = 24;
+    /** The panel's worn column, top to bottom, and the inventory slot each shows (tools/art/screens.py STASH_GEAR). */
+    private static final int[][] GEAR = {{15, CarryService.HEAD}, {24, CarryService.CHEST}, {33, CarryService.LEGS}, {42, CarryService.FEET}};
+    /** The panel's keys 1-8, two a row (tools/art/screens.py STASH_KEYS). */
+    private static final int[] KEYS = {16, 17, 25, 26, 34, 35, 43, 44};
+
+    /** The menu slot of stored-item cell {@code i} on a page: six columns of rows 1-4. */
+    private static int cellSlot(int i) {
+        return 9 + (i / 6) * 9 + i % 6;
+    }
 
     /** How long the sell button waits for its second click, in ticks (stash.sell-confirm-seconds). */
     private int confirmTicks() {
@@ -195,8 +209,14 @@ final class StashMenu extends Menu {
             ItemRecord record = shown.get(index);
             ItemStack display = display(record);
             if (display != null) {
-                button(FIRST_CELL + i, display, e -> clickItem(record, e));
+                button(cellSlot(i), display, e -> clickItem(record, e));
             }
+        }
+        for (int[] gear : GEAR) {
+            drawCarried(gear[0], gear[1]);
+        }
+        for (int k = 0; k < KEYS.length; k++) {
+            drawCarried(KEYS[k], k);
         }
         fillRow(5, UiItems.filler());
         tabButton(45, UiItems.button("craftov:ui/arrow_left", "<text>上一页", List.of("<muted>" + (page + 1) + "/" + pages)), e -> {
@@ -235,7 +255,8 @@ final class StashMenu extends Menu {
         drawSell();
         button(49, UiItems.button("craftov:ui/icon_stash", "<text>仓库 " + p.stashUsed() + "/" + p.stashCapacity,
                 List.of("<muted>块币 <accent>◈" + Text.money(p.money), "<muted>仓库总价值 <white>◈" + Text.money(total),
-                        "<muted>点击下方背包物品存入，Shift 存入同类全部")), e -> { });
+                        "<muted>点击下方背包物品存入，Shift 存入同类全部",
+                        "<muted>点击右侧装备区存入身上的装备")), e -> { });
         int letters = MailService.unclaimed(p);
         List<String> mailLore = new ArrayList<>(List.of("<muted>系统邮件 <white>" + letters + "</white> 封未读",
                 "<muted>物品邮箱 <white>" + p.mailbox.size() + "</white> 件"));
@@ -368,18 +389,23 @@ final class StashMenu extends Menu {
             return;
         }
         ItemDef def = plugin.items().defOf(stack);
+        int wear = plugin.carry().wearSlot(stack);
         if (ItemFactory.hasContents(stack) && def != null && def.isContainer()) {
-            int slot = CarryService.containerSlot(def.category());
-            ItemStack equipped = viewer.getInventory().getItem(slot);
-            if (equipped != null && !equipped.isEmpty()) {
-                Notify.error(viewer, "请先卸下当前的" + def.category().displayName());
+            // Packed, it fits nowhere but its own slot: the worn one is swapped into the stash.
+            if (!swapWorn(stack, CarryService.containerSlot(def.category()))) {
                 return;
             }
-            p.stash.remove(index);
-            plugin.carry().equip(viewer, stack);
+            p.stash.remove(indexOf(p, record));
         } else {
             ItemStack left = plugin.carry().giveOrWear(viewer, stack, false, false);
             int moved = stack.getAmount() - (left == null ? 0 : left.getAmount());
+            if (moved <= 0 && wear >= 0) {
+                if (!swapWorn(stack, wear)) {
+                    return;
+                }
+                moved = stack.getAmount();
+                index = indexOf(p, record);
+            }
             if (moved <= 0) {
                 Notify.error(viewer, "身上没有放它的位置");
                 return;
@@ -396,6 +422,116 @@ final class StashMenu extends Menu {
         plugin.lobby().captureLoadout(viewer);
         plugin.profiles().markDirty(viewer.getUniqueId());
         redraw();
+    }
+
+    /** A worn or hotbar item in the loadout panel, with what a click on it does. */
+    private void drawCarried(int slot, int invSlot) {
+        ItemStack carried = viewer.getInventory().getItem(invSlot);
+        if (carried == null || carried.isEmpty() || ItemFactory.isUi(carried)) {
+            return;
+        }
+        ItemStack display = carried.clone();
+        List<Component> lore = new ArrayList<>(display.getData(DataComponentTypes.LORE) == null ? List.of()
+                : display.getData(DataComponentTypes.LORE).lines());
+        lore.add(Component.empty());
+        if (invSlot == CarryService.MELEE_SLOT) {
+            lore.add(Text.mm("<muted>近战武器固定在 3 号键，从仓库取出另一把即可替换"));
+        } else {
+            int inside = invSlot == CarryService.LEGS || invSlot == CarryService.FEET ? packedCount(invSlot) : 0;
+            lore.add(Text.mm(inside > 0 ? "<ok>点击 存入仓库 <muted>· 连同里面的 " + inside + " 件" : "<ok>点击 存入仓库"));
+        }
+        display.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+        button(slot, display, e -> stashCarried(invSlot));
+    }
+
+    /** Stacks in the cells of the worn rig ({@link CarryService#LEGS}) or backpack. */
+    private int packedCount(int armorSlot) {
+        int start = armorSlot == CarryService.LEGS ? CarryService.RIG_START : CarryService.PACK_START;
+        int cap = armorSlot == CarryService.LEGS ? plugin.carry().rigCapacity(viewer) : plugin.carry().backpackCapacity(viewer);
+        int n = 0;
+        for (int i = 0; i < cap; i++) {
+            ItemStack cell = viewer.getInventory().getItem(start + i);
+            if (cell != null && !cell.isEmpty() && !ItemFactory.isUi(cell)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * A click on the loadout panel: the item goes into the stash, a worn rig or backpack with
+     * everything packed in it (the way unequipping packs it), so nothing is left without a cell.
+     */
+    private void stashCarried(int invSlot) {
+        if (invSlot == CarryService.MELEE_SLOT) {
+            Notify.error(viewer, "近战武器固定在 3 号键");
+            return;
+        }
+        plugin.weapons().flush(viewer);
+        ItemStack current = viewer.getInventory().getItem(invSlot);
+        if (current == null || current.isEmpty() || ItemFactory.isUi(current)) {
+            redraw();
+            return;
+        }
+        String why;
+        if (invSlot == CarryService.LEGS || invSlot == CarryService.FEET) {
+            if (ItemFactory.isRange(current)) {
+                Notify.error(viewer, "靶场装备离开靶场时自动收回");
+                return;
+            }
+            ItemStack packed = plugin.carry().unequip(viewer, invSlot);
+            if (packed == null) {
+                redraw();
+                return;
+            }
+            why = plugin.menus().stash(viewer, packed);
+            if (why != null) {
+                plugin.carry().equip(viewer, packed);
+            }
+        } else {
+            why = plugin.menus().stash(viewer, current);
+            if (why == null) {
+                viewer.getInventory().setItem(invSlot, null);
+            }
+        }
+        if (why != null) {
+            Notify.error(viewer, why);
+            redraw();
+            return;
+        }
+        sellArmedUntil = -1; // the deposit may top up a picked stack
+        viewer.playSound(viewer.getLocation(), "craftov:loot.pickup", 0.5f, 0.8f);
+        plugin.lobby().captureLoadout(viewer);
+        redraw();
+    }
+
+    /**
+     * Taking out a helmet, vest, rig or backpack that has no room on the player: the one worn in its
+     * slot, if any, goes into the stash (packed, for a rig or backpack) and this one goes on. Returns false,
+     * having said why, when the worn one cannot go into the stash.
+     */
+    private boolean swapWorn(ItemStack stack, int slot) {
+        ItemStack worn = viewer.getInventory().getItem(slot);
+        boolean container = slot == CarryService.LEGS || slot == CarryService.FEET;
+        if (ItemFactory.isRange(worn)) {
+            Notify.error(viewer, "请先卸下当前的装备");
+            return false;
+        }
+        ItemStack off = worn == null || worn.isEmpty() ? null : container ? plugin.carry().unequip(viewer, slot) : worn;
+        String why = off == null ? null : plugin.menus().stash(viewer, off);
+        if (why != null) {
+            if (container) {
+                plugin.carry().equip(viewer, off);
+            }
+            Notify.error(viewer, "身上没有放它的位置，换下的也存不进仓库：" + why);
+            return false;
+        }
+        if (container) {
+            plugin.carry().equip(viewer, stack);
+        } else {
+            viewer.getInventory().setItem(slot, stack);
+        }
+        return true;
     }
 
     /** First click arms the sale for five seconds; the second sells exactly what is picked. */

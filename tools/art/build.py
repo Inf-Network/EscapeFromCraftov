@@ -976,6 +976,8 @@ def build_pack_meta():
 TEXT, MUTED, DIM, ACCENT_HEX = palette.TEXT, palette.MUTED, palette.DIM, palette.ACCENT
 OK_HEX, DANGER_HEX, INFO_HEX = palette.OK, palette.DANGER, palette.INFO
 
+STAMINA_W = 100
+
 HUD_IMAGES = {
     'craftov/panel_vitals.png': lambda: hudart.panel(88, 38),
     'craftov/panel_weapon.png': lambda: hudart.panel(118, 38, side='right'),
@@ -1002,9 +1004,10 @@ HUD_IMAGES = {
     'craftov/extract_bar.png': lambda: hudart.bar(120, 3, rgb(palette.OK)),
     'craftov/downed_bar.png': lambda: hudart.bar(120, 3, rgb(palette.DANGER)),
     'craftov/med_bar.png': lambda: hudart.bar(120, 3, rgb('#7FC8D1')),
-    'craftov/stamina_empty.png': lambda: hudart.bar(64, 1, (0, 0, 0, 0), empty=True),
-    'craftov/stamina_bar.png': lambda: hudart.bar(64, 1, rgb(palette.ACCENT)),
-    'craftov/stamina_bar_heavy.png': lambda: hudart.bar(64, 1, rgb(palette.DANGER)),
+    # The sprint stamina bar over the hotbar (#179): a dark track, amber, red while it cannot be used.
+    'craftov/stamina_empty.png': lambda: hudart.track(STAMINA_W, 2),
+    'craftov/stamina_bar.png': lambda: hudart.bar(STAMINA_W, 2, rgb(palette.ACCENT)),
+    'craftov/stamina_bar_heavy.png': lambda: hudart.bar(STAMINA_W, 2, rgb(palette.DANGER)),
     **{'craftov/icon_%s.png' % k: (lambda k=k: hudart.icon(k)) for k in ('bleed', 'heavy', 'fracture', 'pain')},
     'craftov/hit.png': lambda: hudart.marker((240, 240, 240, 255)),
     'craftov/hit_head.png': lambda: hudart.marker(rgb('#FFC23D')),
@@ -1163,11 +1166,6 @@ def build_betterhud():
                                + [image('craftov_bp_%s_%d' % (part, state), 3, 2, cond(('craftov_part_' + part, state)))
                                   for part in hudart.BODY_PARTS for state in range(len(hudart.BODY_STATES))]
                                + [image('craftov_hp_empty', 22, 13), image('craftov_hp_bar', 22, 13),
-                                  # Downed players have no stamina to manage, so the bar is hidden; it turns
-                                  # red while overloaded (no sprinting).
-                                  image('craftov_stamina_empty', 22, 18, cond(('craftov_is_downed', 'false'))),
-                                  image('craftov_stamina_bar', 22, 18, cond(('craftov_is_downed', 'false'), ('craftov_overloaded', 'false'))),
-                                  image('craftov_stamina_bar_heavy', 22, 18, cond(('craftov_is_downed', 'false'), ('craftov_overloaded', 'true'))),
                                   image('craftov_armor_empty', 22, 34), image('craftov_helmet_bar', 22, 34),
                                   image('craftov_armor_empty', 56, 34), image('craftov_armor_bar', 56, 34),
                                   # Wound icons, one slot each: bleeding (heavy replaces light), fracture, painkiller.
@@ -1198,6 +1196,15 @@ def build_betterhud():
                                text(c(MUTED) + '[craftov_ammo_type]', 114, 25, align='right', conditions=cond(('craftov_has_hint', 'false'))),
                                text('[craftov_weapon_hint]', 114, 25, align='right', conditions=cond(('craftov_has_hint', 'true')))]),
             'conditions': cond(('craftov_has_gun', 'true')),
+        },
+        # Sprint stamina (#179), just over the hotbar and under the action bar line, where the eye goes
+        # for the item name and the action bar's messages: only while it is not full or the player
+        # sprints (HudService.staminaState), and red while out of breath or overloaded (no sprint).
+        'craftov_stamina': {
+            'images': numbered([image('craftov_stamina_empty', 0, 0),
+                                image('craftov_stamina_bar', 1, 1, cond(('craftov_stamina_state', 1))),
+                                image('craftov_stamina_bar_heavy', 1, 1, cond(('craftov_stamina_state', 2)))]),
+            'conditions': cond(('craftov_stamina_shown', 'true')),
         },
         # Top left, under the raid info: the operator skill and its cooldown.
         'craftov_skill': {
@@ -1313,6 +1320,8 @@ def build_betterhud():
     huds = {'craftov_hud': {'layouts': numbered([
         place('craftov_vitals', 0, 100, 2, -40),
         place('craftov_weapon', 100, 100, -120, -40),
+        # The hotbar's top edge (its selected-slot frame) is 23 px over the screen's bottom.
+        place('craftov_stamina', 50, 100, -(STAMINA_W + 2) // 2, -28),
         place('craftov_info', 0, 0, 4, 4),
         place('craftov_skill', 0, 0, 4, 51),
         place('craftov_mate_1', 0, 0, 4, 66),

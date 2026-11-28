@@ -4,6 +4,7 @@ import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.Equippable;
 import net.infnetwork.snowball.craftov.CraftovPlugin;
 import net.infnetwork.snowball.craftov.combat.DamageService;
+import net.infnetwork.snowball.craftov.combat.StaminaService;
 import net.infnetwork.snowball.craftov.inventory.CarryService;
 import net.infnetwork.snowball.craftov.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
@@ -102,6 +103,18 @@ public final class HudService {
         alerts.keySet().retainAll(online);
     }
 
+    /**
+     * The stamina bar over the hotbar (#179): shown while stamina is below full or the player sprints,
+     * red while they cannot sprint (out of breath, or overloaded), hidden while downed.
+     */
+    private int staminaState(Player player) {
+        var stamina = plugin.stamina();
+        if (data.downed(player) || stamina.stamina(player) >= StaminaService.MAX && !player.isSprinting()) {
+            return 0;
+        }
+        return stamina.exhausted(player) || stamina.overloaded(player) ? 2 : 1;
+    }
+
     private HudExtra extra(Player player, boolean inLobby) {
         long now = Bukkit.getCurrentTick();
         Timed alert = alerts.get(player.getUniqueId());
@@ -118,6 +131,7 @@ public final class HudService {
         var raid = plugin.raids().raidOf(player);
         boolean marked = objective != null && objective.target() != null && (!inRaid || raid != null && raid.training());
         return new HudExtra(data.hpState(player), data.timeState(player), inRaid ? data.injuryFlags(player) : 0,
+                inRaid ? staminaState(player) : 0,
                 gun != null && gun.ammo() == 0, inRaid ? data.mates(player) : new String[]{"", ""}, feed,
                 alert == null ? "" : alert.text(), alert == null ? NO_ALERT : alert.lines(), inRaid || inLobby ? data.prompt(player) : "",
                 data.objective(player, objective), marked);
@@ -158,7 +172,7 @@ public final class HudService {
                 .filter(line -> !line.isEmpty()).map(line -> Text.plain(Text.mm(line))).toList())
                 + " | prompt=" + Text.plain(Text.mm(e.prompt())) + " | objective=" + Text.plain(Text.mm(e.objective()))
                 + (e.pointer() ? " (compass)" : "") + " | value=" + s.value() + " | time=" + s.time() + "@" + e.timeState()
-                + " | hp=" + s.hp() + "@" + e.hpState() + " | wounds=" + e.injuryFlags()
+                + " | hp=" + s.hp() + "@" + e.hpState() + " | stamina=" + s.stamina() + "@" + e.staminaState() + " | wounds=" + e.injuryFlags()
                 + " | mates=" + String.join(" / ", java.util.Arrays.stream(e.mates()).filter(m -> !m.isEmpty())
                 .map(m -> Text.plain(Text.mm(m))).toList())
                 + " | feedlog=" + String.join(" / ", plugin.killFeed().allLines(player).stream()

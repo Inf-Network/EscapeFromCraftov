@@ -83,6 +83,8 @@ public final class BetterHudBridge implements BetterHudHook {
             number(pm, "craftov_part_" + part.key(), s -> s.part(part));
         }
         number(pm, "craftov_stamina", HudSnapshot::stamina);
+        number(pm, "craftov_stamina_state", s -> s.extra().staminaState());
+        bool(pm, "craftov_stamina_shown", s -> s.extra().staminaState() != 0);
         bool(pm, "craftov_using_med", HudSnapshot::usingMed);
         string(pm, "craftov_med_name", HudSnapshot::medName);
         string(pm, "craftov_med_left", HudSnapshot::medLeft);

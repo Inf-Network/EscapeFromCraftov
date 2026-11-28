@@ -328,57 +328,22 @@ craftov_vitals:
       x: 22
       y: 13
     '39':
-      name: craftov_stamina_empty
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-    '40':
-      name: craftov_stamina_bar
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-        '2':
-          first: craftov_overloaded
-          second: 'false'
-          operation: ==
-    '41':
-      name: craftov_stamina_bar_heavy
-      x: 22
-      y: 18
-      conditions:
-        '1':
-          first: craftov_is_downed
-          second: 'false'
-          operation: ==
-        '2':
-          first: craftov_overloaded
-          second: 'true'
-          operation: ==
-    '42':
       name: craftov_armor_empty
       x: 22
       y: 34
-    '43':
+    '40':
       name: craftov_helmet_bar
       x: 22
       y: 34
-    '44':
+    '41':
       name: craftov_armor_empty
       x: 56
       y: 34
-    '45':
+    '42':
       name: craftov_armor_bar
       x: 56
       y: 34
-    '46':
+    '43':
       name: craftov_icon_bleed
       x: 58
       y: 2
@@ -391,7 +356,7 @@ craftov_vitals:
           first: craftov_inj_heavy
           second: 'false'
           operation: ==
-    '47':
+    '44':
       name: craftov_icon_heavy
       x: 58
       y: 2
@@ -400,7 +365,7 @@ craftov_vitals:
           first: craftov_inj_heavy
           second: 'true'
           operation: ==
-    '48':
+    '45':
       name: craftov_icon_fracture
       x: 68
       y: 2
@@ -409,7 +374,7 @@ craftov_vitals:
           first: craftov_inj_fracture
           second: 'true'
           operation: ==
-    '49':
+    '46':
       name: craftov_icon_pain
       x: 78
       y: 2
@@ -584,6 +549,36 @@ craftov_weapon:
   conditions:
     '1':
       first: craftov_has_gun
+      second: 'true'
+      operation: ==
+  offset: left
+craftov_stamina:
+  images:
+    '1':
+      name: craftov_stamina_empty
+      x: 0
+      y: 0
+    '2':
+      name: craftov_stamina_bar
+      x: 1
+      y: 1
+      conditions:
+        '1':
+          first: craftov_stamina_state
+          second: 1
+          operation: ==
+    '3':
+      name: craftov_stamina_bar_heavy
+      x: 1
+      y: 1
+      conditions:
+        '1':
+          first: craftov_stamina_state
+          second: 2
+          operation: ==
+  conditions:
+    '1':
+      first: craftov_stamina_shown
       second: 'true'
       operation: ==
   offset: left

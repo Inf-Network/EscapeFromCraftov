@@ -33,7 +33,7 @@ TEXT_BOXES = {
 ALWAYS = ['craftov_vitals', 'craftov_weapon', 'craftov_skill', 'craftov_info', 'craftov_mate_1',
           'craftov_mate_2', 'craftov_feed_1', 'craftov_feed_2', 'craftov_feed_3', 'craftov_feed_4', 'craftov_feed_5',
           'craftov_objective', 'craftov_objective_raid_0', 'craftov_objective_raid_1',
-          'craftov_objective_raid_2']
+          'craftov_objective_raid_2', 'craftov_stamina']
 
 
 # Every screen shape the alert check runs on, GUI px: the client's smallest, 4:3, 5:4, 16:10 and the above.

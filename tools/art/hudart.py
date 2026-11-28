@@ -65,6 +65,14 @@ def bar(w, h, color, empty=False):
     return img
 
 
+def track(w, h):
+    """A bar's dark groove with a one-pixel rim: (w + 2) x (h + 2), the bar drawn 1 px in."""
+    img = Image.new('RGBA', (w + 2, h + 2), rgb(PAL.BG, 200))
+    d = ImageDraw.Draw(img)
+    d.rectangle([1, 1, w, h], fill=(255, 255, 255, 38))
+    return img
+
+
 def marker(color, size=15, thick=2, gap=3):
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)

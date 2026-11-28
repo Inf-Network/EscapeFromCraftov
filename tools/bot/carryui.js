@@ -391,6 +391,36 @@ async function cursor () {
   bot.quit()
 }
 
+/**
+ * Gear with no rig or backpack (#184): Q on the worn vest in the lobby leaves it on (it used to go
+ * to gun key 1), and a shift-click on it puts it into the stash since it fits nowhere on the player.
+ */
+async function gear () {
+  const bot = await make('Cg')
+  await settle(bot)
+  await cmd(`item replace entity ${bot.username} armor.legs with air`)
+  await cmd(`item replace entity ${bot.username} armor.feet with air`)
+  bot._client.write('close_window', { windowId: 0 })
+  await sleep(600)
+  if (!await wornId(bot, 'chest')) await cmd(`cv give ${bot.username} armor_1 1`)
+  await settle(bot, 600)
+  const vest = await wornId(bot, 'chest')
+  const key1 = idOf(bot.inventory.slots[36])
+  rawClick(bot, 0, 6, 0, 4) // Q on the worn vest
+  await settle(bot)
+  check('gear: Q on the worn vest in the lobby leaves it on', !!vest && await wornId(bot, 'chest') === vest
+    && idOf(bot.inventory.slots[36]) === key1, { vest, key1, after: idOf(bot.inventory.slots[36]) })
+  bot.msgs.length = 0
+  rawClick(bot, 0, 6, 0, 1) // shift-click: no backpack, so into the stash
+  await settle(bot, 600)
+  const onBot = bot.inventory.slots.filter(s => idOf(s) === vest).length
+  const worn = await wornId(bot, 'chest')
+  bot._client.write('close_window', { windowId: 0 })
+  await leave(bot)
+  const stashed = (readProfile(bot.username).stash || []).filter(r => r.id === vest).length
+  check('gear: shift-click on the worn vest with no backpack puts it in the stash', !worn && onBot === 0 && stashed === 1, { worn, onBot, stashed, msgs: bot.msgs.slice(-3) })
+}
+
 async function stash () {
   const bot = await make('Cs')
   await settle(bot)
@@ -917,7 +947,7 @@ async function ghost () {
 }
 
 ;(async () => {
-  const all = { zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
+  const all = { gear, zones, rules, matrix, info, cursor, stash, trader, preset, secure, loot, ghost }
   for (const name of scenarios) {
     try {
       await all[name]()

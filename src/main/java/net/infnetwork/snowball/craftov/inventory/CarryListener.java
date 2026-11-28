@@ -118,14 +118,22 @@ public final class CarryListener implements Listener {
         }
         if (ownScreen && event.isShiftClick() && (slot == CarryService.HEAD || slot == CarryService.CHEST)) {
             // Taking the helmet or vest off goes into the backpack, not the first free cell vanilla picks.
+            // With no room for it in the lobby it goes to the stash: armour fits nowhere but the
+            // backpack, so without one a vest brought home could otherwise never be put away.
             event.setCancelled(true);
             ItemStack worn = player.getInventory().getItem(slot);
             if (worn != null && !worn.isEmpty()) {
                 player.getInventory().setItem(slot, null);
                 ItemStack left = carry.give(player, worn, false);
                 if (left != null) {
-                    player.getInventory().setItem(slot, left);
-                    Notify.error(player, "背包里没有空位");
+                    String why = plugin.menus().stash(player, left);
+                    if (why == null) {
+                        plugin.lobby().captureLoadout(player);
+                        Notify.ok(player, "背包里没有空位，已存入仓库");
+                    } else {
+                        player.getInventory().setItem(slot, left);
+                        Notify.error(player, plugin.raids().raidOf(player) == null ? why : "背包里没有空位");
+                    }
                 }
                 player.updateInventory();
             }

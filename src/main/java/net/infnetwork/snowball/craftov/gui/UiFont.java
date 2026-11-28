@@ -1,17 +1,22 @@
 package net.infnetwork.snowball.craftov.gui;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.jspecify.annotations.Nullable;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,9 +25,12 @@ import java.util.Map;
  * game's font, the rounded text font (#182).
  * <p>
  * A container title starts 8 px right of the window's left edge. A designed title moves the pen back
- * to the edge (shift characters), draws the background glyph, moves forward to where the title text
- * belongs and writes the text. The glyphs' positions and advances come from ui/screens.json, which the
- * build writes next to the font.
+ * to the edge (shift characters), draws the background glyph, writes the screen's labels (#192), moves
+ * forward to where the title text belongs and writes the text. The labels are text in the rounded font
+ * rather than part of the art, which as a font glyph cannot be finer than one texel per GUI pixel: each
+ * is in a font of its own row (craftov:label_&lt;row&gt;, the label font moved down to it) and advances
+ * a whole number of pixels, so the shifts between them stay exact. The glyphs' positions and advances
+ * and the labels come from ui/screens.json, which the build writes next to the font.
  */
 public final class UiFont {
 
@@ -34,7 +42,11 @@ public final class UiFont {
     private static final char SHIFT_NEG = '';
     private static final char SHIFT_POS = '';
 
-    private record Glyph(String ch, int advance, int left) {
+    private record Glyph(String ch, int advance, int left, List<Label> labels) {
+    }
+
+    /** A label at {@code x} px from the window's left edge, {@code width} px wide in its font. */
+    private record Label(int x, Key font, String text, TextColor color, int width) {
     }
 
     private static final Map<String, Glyph> SCREENS = load();
@@ -51,7 +63,17 @@ public final class UiFont {
             JsonObject root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
             for (String id : root.keySet()) {
                 JsonObject o = root.getAsJsonObject(id);
-                out.put(id, new Glyph(o.get("char").getAsString(), o.get("advance").getAsInt(), o.get("left").getAsInt()));
+                List<Label> labels = new ArrayList<>();
+                if (o.has("labels")) {
+                    for (JsonElement e : o.getAsJsonArray("labels")) {
+                        JsonObject l = e.getAsJsonObject();
+                        TextColor color = TextColor.fromHexString(l.get("color").getAsString());
+                        labels.add(new Label(l.get("x").getAsInt(), Key.key(l.get("font").getAsString()), l.get("text").getAsString(),
+                                color == null ? NamedTextColor.GRAY : color, l.get("width").getAsInt()));
+                    }
+                }
+                out.put(id, new Glyph(o.get("char").getAsString(), o.get("advance").getAsInt(), o.get("left").getAsInt(),
+                        List.copyOf(labels)));
             }
         } catch (Exception ignored) {
             // A jar without the generated file still opens every menu, just without backgrounds.
@@ -98,10 +120,15 @@ public final class UiFont {
         if (glyph == null) {
             return Component.text().font(FONT).append(Component.text(shift(TEXT_PAD))).append(body).build();
         }
-        int back = -(TITLE_X + glyph.left());
-        String prefix = shift(back) + glyph.ch() + shift(-glyph.advance() - back + TEXT_PAD);
-        return Component.text().font(FONT)
-                .append(Component.text(prefix, NamedTextColor.WHITE))
-                .append(body).build();
+        // The pen, in px from the window's left edge: the title starts at TITLE_X.
+        int pen = -glyph.left() + glyph.advance();
+        TextComponent.Builder out = Component.text().font(FONT)
+                .append(Component.text(shift(-glyph.left() - TITLE_X) + glyph.ch(), NamedTextColor.WHITE));
+        for (Label label : glyph.labels()) {
+            out.append(Component.text(shift(label.x() - pen)))
+                    .append(Component.text(label.text(), label.color()).font(label.font()));
+            pen = label.x() + label.width();
+        }
+        return out.append(Component.text(shift(TITLE_X + TEXT_PAD - pen))).append(body).build();
     }
 }

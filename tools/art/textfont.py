@@ -1,8 +1,9 @@
 """The text font (#163): JiangChengYuanTi 500W (江城圆体, SIL Open Font License 1.1), the rounded face
 backrooms-ng draws its HUD and menu text in (it uses the 300W weight), for everything the client
 writes in its default font: item names and lore, menu buttons, chat, titles, menu titles and the
-vanilla screens' labels, and, baked into a bitmap (hud_sheet), BetterHud's HUD (#182). Only the
-labels drawn into the menu art keep the 10 px pixel font (pixelfont.py).
+vanilla screens' labels, and, baked into a bitmap (hud_sheet), BetterHud's HUD (#182), and the menus'
+own labels (#192, label_font). The 10 px pixel font (pixelfont.py) is left for the few symbols the
+face lacks in the HUD and the numbers on the range's paper targets.
 
 Lineage: Adobe's Source Han Sans (思源黑体) -> ButTaiwan's GenSen Rounded (源泉圓體), its strokes
 rounded, Taiwanese glyph forms -> LiuPeng's JiangChengYuanTi, the same outlines with the forms
@@ -393,6 +394,92 @@ def _cmap():
     from fontTools.ttLib import TTFont
     return TTFont(OUT, lazy=True).getBestCmap()
 
+
+
+# ---------------------------------------------------------------- menu labels (#192)
+#
+# The labels of the menus (a band's 行动, a big button's 开始匹配, 容量 27 格 ...) were drawn into the
+# screen art in the pixel font. A designed screen is one glyph of the craftov:ui font, and the client
+# packs font glyphs into 256 x 256 pages, so its art cannot carry text at more than one texel per GUI
+# pixel (a 176 px window would need 704 texels at 4x). The labels are text in the menu title instead
+# (UiFont), drawn by the client from the face's outlines exactly like the title next to them: the
+# label font is the text font cut to the labels' characters with every advance a whole GUI pixel, so
+# the shift characters between labels land each one on its pixel. A title has only one line, so each
+# row of labels has a font of its own whose provider moves the text down to that row (label_font).
+#
+# The two vanilla container textures (generic_54.png under every chest menu, inventory.png for E) are
+# not font glyphs and have no title to carry text, so their labels are baked into the texture at
+# TEXTURE_K texels per GUI pixel, the text font's oversample: the client samples them exactly as it
+# samples the text font's glyphs, and their pixel art, scaled up by a whole number, stays exact at
+# every GUI scale.
+
+LABEL_UPM = 900                  # 100 units per GUI px at SIZE 9, so a whole-pixel advance is exact
+TEXTURE_K = OVERSAMPLE
+
+
+def _metrics():
+    from fontTools.ttLib import TTFont
+    font = TTFont(OUT, lazy=True)
+    return font.getBestCmap(), font['hmtx'], font['head'].unitsPerEm
+
+
+def label_advance(ch, _cache={}):
+    """GUI px the label font advances after `ch`: the text font's advance rounded to a whole pixel."""
+    if not _cache:
+        _cache['m'] = _metrics()
+    cmap, hmtx, upm = _cache['m']
+    if ord(ch) not in cmap:
+        raise ValueError('the text font has no %r for a menu label' % ch)
+    return max(1, round(hmtx[cmap[ord(ch)]][0] * SIZE / upm))
+
+
+def label_width(text):
+    return sum(label_advance(ch) for ch in text)
+
+
+def label_font(chars):
+    """The label font (craftov:font/label.ttf): the text font cut to `chars`, scaled to LABEL_UPM units
+    per em and every advance set to label_advance, so the client advances it by whole GUI pixels."""
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+    from fontTools.ttLib.scaleUpem import scale_upem
+    font = TTFont(OUT, recalcTimestamp=False)
+    opts = subset.Options()
+    opts.layout_features = []
+    opts.name_IDs = ['*']
+    opts.name_languages = ['*']
+    opts.notdef_outline = True
+    subsetter = subset.Subsetter(opts)
+    subsetter.populate(unicodes=[ord(ch) for ch in chars])
+    subsetter.subset(font)
+    scale_upem(font, LABEL_UPM)
+    hmtx = font['hmtx']
+    for code, name in font.getBestCmap().items():
+        hmtx[name] = (label_advance(chr(code)) * LABEL_UPM // SIZE, hmtx[name][1])
+    font['hhea'].advanceWidthMax = max(a for a, _ in hmtx.metrics.values())
+    out = io.BytesIO()
+    font.save(out)
+    return out.getvalue()
+
+
+def label_provider(dy):
+    """The provider of a label row's font: the text font's settings, moved down dy GUI px from the
+    title's line (a container title's line top is 6 px below the window's top)."""
+    return dict(provider('craftov:label.ttf'), shift=[0, round(dy + SHIFT, 4)])
+
+
+def draw_label(img, x, top, text, color, k=TEXTURE_K, size=SIZE):
+    """`text` drawn into an image of k texels per GUI px the way the client draws the label font: line
+    top at GUI px `top` (a hanzi's ink on rows top..top+8), each character at whole-pixel advances."""
+    from PIL import ImageDraw, ImageFont
+    font = ImageFont.truetype(OUT, size * k)
+    d = ImageDraw.Draw(img)
+    baseline = round((top + 7 * size / SIZE + SHIFT) * k)
+    pen = x
+    for ch in text:
+        d.text((pen * k, baseline), ch, font=font, fill=color, anchor='ls')
+        pen += label_advance(ch) * size / SIZE
+    return pen
 
 if __name__ == '__main__':
     if sys.argv[1:2] == ['bake']:

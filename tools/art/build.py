@@ -766,7 +766,8 @@ SHIFT_NEG, SHIFT_POS, SCREEN_BASE = 0xF800, 0xF810, 0xE100
 
 
 def build_screens():
-    """Container skin, slot silhouettes, label lang strings and the craftov:ui font with the screens."""
+    """Container skin, slot silhouettes, label lang strings, the craftov:ui font with the screens and the
+    fonts of the screens' labels."""
     save(screens.generic_54(), os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png'))
     save(screens.inventory(), os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png'))
     for kind in ('helmet', 'chestplate', 'leggings', 'boots'):
@@ -794,8 +795,10 @@ def build_screens():
     # The skin screens go last: a screen's glyph is its place in this order, and the menus that are
     # older keep theirs.
     all_screens = {**screens.SCREENS, **screens.skin_screens(load_knife_skins())}
+    label_rows = set()
+    label_chars = set()
     for i, (sid, make) in enumerate(all_screens.items()):
-        img, left, top = make()
+        img, left, top, labels = make()
         cp = chr(SCREEN_BASE + i)
         save(img, os.path.join(CV, 'textures', 'font', 'screen', sid + '.png'))
         # A menu title is drawn 6 px below the window top: ascent 13 puts the image's top row there.
@@ -803,7 +806,10 @@ def build_screens():
                           'ascent': 13 + top, 'chars': [cp]})
         box = img.getchannel('A').getbbox()
         # The client advances a bitmap glyph by its inked width plus one.
-        meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left}
+        meta[sid] = {'char': cp, 'advance': (box[2] if box else 0) + 1, 'left': left,
+                     'labels': [screen_label(label) for label in labels]}
+        label_rows.update(label['top'] for label in labels)
+        label_chars.update(''.join(label['text'] for label in labels))
     # U+E0FF: the black transition curtain (UiFont.blackout). A title draws at 4x and centres its text,
     # so 64x16 at height 192 covers 3072x768 GUI px; ascent 93 centres it on the screen's middle.
     save(screens.blackout(), os.path.join(CV, 'textures', 'font', 'blackout.png'))
@@ -812,13 +818,37 @@ def build_screens():
     providers.append({'type': 'reference', 'id': 'minecraft:default'})
     write_json(os.path.join(CV, 'font', 'ui.json'), {'providers': providers})
     write_json(os.path.join(RES, 'ui', 'screens.json'), meta)
+    # The labels' font (#192): the text font cut to their characters with whole-pixel advances, one
+    # font per row (label_font_id), each moving it down from the title's line to its row.
+    with open(os.path.join(CV, 'font', 'label.ttf'), 'wb') as f:
+        f.write(textfont.label_font(sorted(label_chars)))
+    for row in sorted(label_rows):
+        write_json(os.path.join(CV, 'font', label_font_id(row).split(':')[1] + '.json'),
+                   {'providers': [textfont.label_provider(row - TITLE_TOP), {'type': 'reference', 'id': 'minecraft:default'}]})
+
+
+# Where the client starts a container title's line, GUI px below the window's top.
+TITLE_TOP = 6
+
+
+def label_font_id(top):
+    """The font of the menu labels whose line starts `top` px below the window's top."""
+    return 'craftov:label_%s' % (str(top) if top >= 0 else 'n%d' % -top)
+
+
+def screen_label(label):
+    """A label as UiFont writes it into the title: its x, font, text, colour and whole-pixel width."""
+    color = label['color']
+    return {'x': label['x'], 'font': label_font_id(label['top']), 'text': label['text'],
+            'color': color if isinstance(color, str) else '#%02X%02X%02X' % color[:3],
+            'width': textfont.label_width(label['text'])}
 
 
 def build_fonts():
     """The text font (textfont.py, #163) in front of vanilla's in minecraft:default, so item names,
     lore, menu buttons, chat and on-screen titles are drawn from smooth outlines instead of Unifont's
-    16 px bitmap (menu titles too, through craftov:ui; only the labels drawn into the menu art keep the
-    pixel font).
+    16 px bitmap (menu titles too, through craftov:ui, and the menus' labels in craftov:label_<row>,
+    build_screens).
     Hanzi, digits and the space keep vanilla's advances (9, 6 and 4 px), so Chinese lines wrap and
     measure as before; Latin letters and most punctuation take the face's own widths (textfont.py).
     Whatever the face lacks falls through to vanilla's own providers, which the client keeps after

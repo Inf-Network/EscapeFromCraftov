@@ -1,0 +1,22 @@
+{
+ "providers": [
+  {
+   "type": "ttf",
+   "file": "craftov:label.ttf",
+   "size": 9,
+   "oversample": 6,
+   "shift": [
+    0,
+    68.3333
+   ],
+   "skip": "",
+   "filter": {
+    "uniform": false
+   }
+  },
+  {
+   "type": "reference",
+   "id": "minecraft:default"
+  }
+ ]
+}

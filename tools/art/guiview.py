@@ -2,15 +2,18 @@
 
 Composes every designed screen the way the client draws it: the chest window from generic_54.png
 (rows*18+17 px of the top, then the 96 px player part from y=126), the screen's glyph over it from
-the window's top-left corner (gui/UiFont.java puts it there), and a rarity tile in a few slots, so a
-screen can be judged without starting the game; plus the inventory screen (E) with its info cells.
-Previews are written at GUI scale 2 and 3 to tools/art/.cache/guiview/<screen>@<scale>.png.
+the window's top-left corner (gui/UiFont.java puts it there), its labels in the text font as the
+title writes them (ui/screens.json), and a rarity tile in a few slots, so a screen can be judged
+without starting the game; plus the inventory screen (E) with its info cells. Everything is composed
+at textfont.TEXTURE_K texels per GUI pixel and sampled down without filtering, as the client does.
+Previews are written at GUI scale 2, 3 and 4 to tools/art/.cache/guiview/<screen>@<scale>.png.
 
   python3 tools/art/guiview.py            previews and checks
   python3 tools/art/guiview.py --check    checks only (build.py runs these after every build)
 
 Checks (exit code 1 on any problem):
-  * generic_54.png and inventory.png are 256x256, and every vanilla slot has an 18x18 well at its
+  * generic_54.png and inventory.png are 256x256 GUI px at TEXTURE_K texels each, and every vanilla
+    slot has an 18x18 well at its
     place: E screen (7, 7+18k), (7+18j, 83+18i), (7+18j, 141) and the five info cells; generic_54
     (7+18j, 17+18i), (7+18j, 139+18i), (7+18j, 197), all in texture pixels;
   * every well drawn in a screen glyph sits on the slot grid (0 px off), and no two glyphs of the
@@ -28,6 +31,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import px  # noqa: E402
 import screens  # noqa: E402
+import textfont  # noqa: E402
+
+K = textfont.TEXTURE_K
 
 RES = os.path.join(HERE, '..', '..', 'src', 'main', 'resources')
 ASSETS = os.path.join(RES, 'pack', 'craftov', 'resourcepack', 'assets')
@@ -56,8 +62,10 @@ def texture_problems():
     inv = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png')).convert('RGBA')
     chest = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png')).convert('RGBA')
     for name, img in (('inventory.png', inv), ('generic_54.png', chest)):
-        if img.size != (256, 256):
-            problems.append('%s is %dx%d, not 256x256' % (name, img.width, img.height))
+        if img.size != (256 * K, 256 * K):
+            problems.append('%s is %dx%d, not %dx%d' % (name, img.width, img.height, 256 * K, 256 * K))
+    # One texel per GUI pixel for the well checks: the middle texel of each block.
+    inv, chest = (img.resize((256, 256), Image.NEAREST) for img in (inv, chest))
     want = [(7, 7 + 18 * k) for k in range(4)]
     want += [(7 + 18 * j, 83 + 18 * i) for i in range(3) for j in range(9)]
     want += [(7 + 18 * j, 141) for j in range(9)]
@@ -150,34 +158,52 @@ def tile(rank):
     return px.rarity_tile(px.rgb(RARITY[rank]), rank).resize((18, 18), Image.NEAREST)
 
 
+def up(img):
+    return img.resize((img.width * K, img.height * K), Image.NEAREST)
+
+
+def compose(sid, meta=None):
+    """Screen `sid` as the client composes it, at K texels per GUI pixel (None without a glyph)."""
+    path = os.path.join(CV, 'textures', 'font', 'screen', sid + '.png')
+    if not os.path.exists(path):
+        return None
+    if meta is None:
+        meta = json.load(open(os.path.join(RES, 'ui', 'screens.json'), encoding='utf-8'))
+    chest = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png')).convert('RGBA')
+    glyph = Image.open(path).convert('RGBA')
+    rows = max(1, (glyph.height - 17) // 18)
+    h = rows * 18 + 17
+    img = Image.new('RGBA', (screens.W * K, (h + 96) * K), (0, 0, 0, 0))
+    img.paste(chest.crop((0, 0, screens.W * K, h * K)), (0, 0))
+    img.paste(chest.crop((0, 126 * K, screens.W * K, 222 * K)), (0, h * K))
+    img.alpha_composite(up(glyph), (0, 0))
+    for label in meta.get(sid, {}).get('labels', []):
+        top = int(label['font'].split('_')[-1].replace('n', '-'))
+        textfont.draw_label(img, label['x'], top, label['text'], px.rgb(label['color']))
+    # A few items on the player's part show how tiles sit in the wells.
+    for j, rank in enumerate(range(6)):
+        img.alpha_composite(up(tile(rank)), ((7 + 18 * j) * K, (h + 13) * K))
+    return img
+
+
 def previews():
     os.makedirs(OUT, exist_ok=True)
-    chest = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'generic_54.png')).convert('RGBA')
+    meta = json.load(open(os.path.join(RES, 'ui', 'screens.json'), encoding='utf-8'))
     shots = {}
     for sid in screens.SCREENS:
-        path = os.path.join(CV, 'textures', 'font', 'screen', sid + '.png')
-        if not os.path.exists(path):
-            continue
-        glyph = Image.open(path).convert('RGBA')
-        rows = max(1, (glyph.height - 17) // 18)
-        h = rows * 18 + 17
-        img = Image.new('RGBA', (screens.W, h + 96), (0, 0, 0, 0))
-        img.paste(chest.crop((0, 0, screens.W, h)), (0, 0))
-        img.paste(chest.crop((0, 126, screens.W, 222)), (0, h))
-        img.alpha_composite(glyph, (0, 0))
-        # A few items on the player's part show how tiles sit in the wells.
-        for j, rank in enumerate(range(6)):
-            img.alpha_composite(tile(rank), (7 + 18 * j, h + 13))
-        shots[sid] = img
-    inv = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png')).convert('RGBA').crop((0, 0, 176, 166))
+        img = compose(sid, meta)
+        if img is not None:
+            shots[sid] = img
+    inv = Image.open(os.path.join(MC, 'textures', 'gui', 'container', 'inventory.png')).convert('RGBA').crop((0, 0, 176 * K, 166 * K))
     for j, rank in enumerate(range(6)):
-        inv.alpha_composite(tile(rank), (7 + 18 * j, 101))
+        inv.alpha_composite(up(tile(rank)), ((7 + 18 * j) * K, 101 * K))
     shots['inventory'] = inv
     for sid, img in shots.items():
-        backdrop = Image.new('RGBA', (img.width + 16, img.height + 16), (24, 24, 24, 255))
-        backdrop.alpha_composite(img, (8, 8))
-        for scale in (2, 3):
-            backdrop.resize((backdrop.width * scale, backdrop.height * scale), Image.NEAREST).save(
+        backdrop = Image.new('RGBA', (img.width + 16 * K, img.height + 16 * K), (24, 24, 24, 255))
+        backdrop.alpha_composite(img, (8 * K, 8 * K))
+        for scale in (2, 3, 4):
+            # Each screen pixel takes the texel under its centre, as the client samples.
+            backdrop.resize((backdrop.width * scale // K, backdrop.height * scale // K), Image.NEAREST).save(
                 os.path.join(OUT, '%s@%d.png' % (sid, scale)))
     return sorted(shots)
 
@@ -188,7 +214,7 @@ def main():
         print('guiview:', p)
     if '--check' not in sys.argv:
         names = previews()
-        print('guiview: %d previews in %s' % (len(names) * 2, os.path.relpath(OUT)))
+        print('guiview: %d previews in %s' % (len(names) * 3, os.path.relpath(OUT)))
     print('guiview: %s' % ('%d problem(s)' % len(problems) if problems else 'all screens line up'))
     sys.exit(1 if problems else 0)
 

@@ -2,136 +2,564 @@
  "main": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "行动",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 48,
+    "font": "craftov:label_22",
+    "text": "备战",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 102,
+    "font": "craftov:label_22",
+    "text": "成长",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 138,
+    "font": "craftov:label_22",
+    "text": "社交",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 16,
+    "font": "craftov:label_59",
+    "text": "开始",
+    "color": "#F2B544",
+    "width": 18
+   },
+   {
+    "x": 16,
+    "font": "craftov:label_70",
+    "text": "行动",
+    "color": "#F2B544",
+    "width": 18
+   }
+  ]
  },
  "deploy": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "选择地图",
+    "color": "#A4AAB3",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "难度",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_76",
+    "text": "编队",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_92",
+    "text": "开始匹配",
+    "color": "#F2B544",
+    "width": 36
+   }
+  ]
  },
  "deploy_queued": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "选择地图",
+    "color": "#A4AAB3",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "难度",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_76",
+    "text": "编队",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_92",
+    "text": "取消匹配",
+    "color": "#E5484D",
+    "width": 36
+   }
+  ]
  },
  "stash_0": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_1": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_2": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_3": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_4": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_5": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_6": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_7": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "stash_8": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "trader": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "loot_9": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 9,
+    "font": "craftov:label_56",
+    "text": "容量 9 格",
+    "color": "#69707A",
+    "width": 41
+   },
+   {
+    "x": 120,
+    "font": "craftov:label_5",
+    "text": "我的装备",
+    "color": "#A4AAB3",
+    "width": 36
+   }
+  ]
  },
  "loot_18": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 9,
+    "font": "craftov:label_74",
+    "text": "容量 18 格",
+    "color": "#69707A",
+    "width": 47
+   },
+   {
+    "x": 120,
+    "font": "craftov:label_5",
+    "text": "我的装备",
+    "color": "#A4AAB3",
+    "width": 36
+   }
+  ]
  },
  "loot_27": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 9,
+    "font": "craftov:label_110",
+    "text": "容量 27 格",
+    "color": "#69707A",
+    "width": 47
+   },
+   {
+    "x": 120,
+    "font": "craftov:label_5",
+    "text": "我的装备",
+    "color": "#A4AAB3",
+    "width": 36
+   }
+  ]
  },
  "loot_36": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 120,
+    "font": "craftov:label_5",
+    "text": "我的装备",
+    "color": "#A4AAB3",
+    "width": 36
+   }
+  ]
  },
  "health": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": []
  },
  "gunsmith": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_40",
+    "text": "已选枪械 · 配件位",
+    "color": "#A4AAB3",
+    "width": 73
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_94",
+    "text": "身上的配件 · 点击安装",
+    "color": "#A4AAB3",
+    "width": 91
+   }
+  ]
  },
  "settlement_ok": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "撤离成功",
+    "color": "#7FD1AE",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "带出的物品 · 价值最高的 10 件",
+    "color": "#A4AAB3",
+    "width": 129
+   },
+   {
+    "x": 124,
+    "font": "craftov:label_110",
+    "text": "再来一局",
+    "color": "#F2B544",
+    "width": 36
+   }
+  ]
  },
  "settlement_fail": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "行动失败",
+    "color": "#E5484D",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "损失的物品 · 价值最高的 10 件",
+    "color": "#A4AAB3",
+    "width": 129
+   },
+   {
+    "x": 124,
+    "font": "craftov:label_110",
+    "text": "再来一局",
+    "color": "#F2B544",
+    "width": 36
+   }
+  ]
  },
  "settlement_training_ok": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "训练完成",
+    "color": "#7FD1AE",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "训练课程 · 完成的会发光",
+    "color": "#A4AAB3",
+    "width": 100
+   },
+   {
+    "x": 124,
+    "font": "craftov:label_110",
+    "text": "开始行动",
+    "color": "#F2B544",
+    "width": 36
+   }
+  ]
  },
  "settlement_training_fail": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "训练中断",
+    "color": "#E5484D",
+    "width": 36
+   },
+   {
+    "x": 12,
+    "font": "craftov:label_58",
+    "text": "训练课程 · 完成的会发光",
+    "color": "#A4AAB3",
+    "width": 100
+   },
+   {
+    "x": 124,
+    "font": "craftov:label_110",
+    "text": "开始行动",
+    "color": "#F2B544",
+    "width": 36
+   }
+  ]
  },
  "skins_knife_starter": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "皮肤只改变刀的外观",
+    "color": "#A4AAB3",
+    "width": 81
+   },
+   {
+    "x": 34,
+    "font": "craftov:label_78",
+    "text": "默认",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_78",
+    "text": "锈港",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 106,
+    "font": "craftov:label_78",
+    "text": "雪线",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 142,
+    "font": "craftov:label_78",
+    "text": "警戒",
+    "color": "#E9E5DA",
+    "width": 18
+   }
+  ]
  },
  "skins_knife_tactical": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "皮肤只改变刀的外观",
+    "color": "#A4AAB3",
+    "width": 81
+   },
+   {
+    "x": 34,
+    "font": "craftov:label_78",
+    "text": "默认",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_78",
+    "text": "黑曜",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 106,
+    "font": "craftov:label_78",
+    "text": "夜航",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 142,
+    "font": "craftov:label_78",
+    "text": "戈壁",
+    "color": "#E9E5DA",
+    "width": 18
+   }
+  ]
  },
  "skins_knife_machete": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "皮肤只改变刀的外观",
+    "color": "#A4AAB3",
+    "width": 81
+   },
+   {
+    "x": 34,
+    "font": "craftov:label_78",
+    "text": "默认",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_78",
+    "text": "密林",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 106,
+    "font": "craftov:label_78",
+    "text": "熔脉",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 142,
+    "font": "craftov:label_78",
+    "text": "古铜",
+    "color": "#E9E5DA",
+    "width": 18
+   }
+  ]
  },
  "skins_knife_karambit": {
   "char": "",
   "advance": 177,
-  "left": 0
+  "left": 0,
+  "labels": [
+   {
+    "x": 12,
+    "font": "craftov:label_22",
+    "text": "皮肤只改变刀的外观",
+    "color": "#A4AAB3",
+    "width": 81
+   },
+   {
+    "x": 34,
+    "font": "craftov:label_78",
+    "text": "默认",
+    "color": "#A4AAB3",
+    "width": 18
+   },
+   {
+    "x": 70,
+    "font": "craftov:label_78",
+    "text": "鎏金",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 106,
+    "font": "craftov:label_78",
+    "text": "星图",
+    "color": "#E9E5DA",
+    "width": 18
+   },
+   {
+    "x": 142,
+    "font": "craftov:label_78",
+    "text": "赤潮",
+    "color": "#E9E5DA",
+    "width": 18
+   }
+  ]
  }
 }
